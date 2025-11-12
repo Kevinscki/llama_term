@@ -1,22 +1,31 @@
-##llama_term
-This is my fun short script that runs ai (controlled) for running shell commands, the process is simply
+# llama_term
 
-***command - > execute***
+A fun short script that runs AI-controlled shell commands.
 
-when that fails
+## How it works
 
-***command -> execute ->ai prompted -> user prompted -> execute the script***
+The process is simple:
 
-The terminal is not an actual compiled shell, but it emulates whats mostly done in a terminal
+**command → execute**
 
-The terminal is mostly for UNIX systems (but might also work with windows)
+When that fails:
 
-##Settings
+**command → execute → ai prompted → user prompted → execute the script**
 
-you may set 
+The terminal is not an actual compiled shell, but it emulates what's mostly done in a terminal.
 
-OLLAMA_MODEL "Default is: qwen2.5-coder:3b"
-BASE_DIR
-HISTORY_LINES (How many added history to be stored in lines)
+The terminal is mostly for UNIX systems (but might also work with Windows).
 
-read flag.txt will test if the model runs correctly
+## Settings
+
+You may set:
+
+- `OLLAMA_MODEL` (Default: `qwen2.5-coder:3b`)
+- `BASE_DIR`
+- `HISTORY_LINES` (How many added history to be stored in lines)
+
+## Testing
+
+Tell the model to find the flag (or just read the flag) to test if the model runs correctly.
+
+Feel free to adjust your prompt in the history, will use sqllite3 for next version
