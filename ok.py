@@ -23,6 +23,7 @@ GREY    = "\033[90m"
 
 # Configuration
 USERNAME = os.getenv("USER") or os.getenv("USERNAME")
+OLLAMA_MODEL ="qwen2.5-coder:3b"
 COMPUTERNAME = os.environ.get("COMPUTERNAME", os.uname().nodename if hasattr(os, "uname") else "PC")
 BASE_DIR = Path.home() / "projects" / "ai" / "llama_terminal"
 HISTORY_DIR = BASE_DIR / "history"
@@ -128,7 +129,7 @@ def handle_error(failed_command, exit_code):
         try:
             with TEMP_SCRIPT.open("w") as temp_file:
                 subprocess.run(
-                    f"cat {LOG_FILE} | {ollama_path} run qwen2.5-coder:3b | sed 's/```bash//g; s/```//g' > {TEMP_SCRIPT}",
+                    f"cat {LOG_FILE} | {ollama_path} run {OLLAMA_MODEL} | sed 's/```bash//g; s/```//g' > {TEMP_SCRIPT}",
                     shell=True,
                     stdout=temp_file,
                     stderr=subprocess.DEVNULL,
