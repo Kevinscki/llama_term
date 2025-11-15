@@ -41,7 +41,7 @@ A fun short script that runs AI-controlled shell commands.
 Just run:
 
 ```bash
-py llama_shell.py
+python3 llama_shell.py
 ```
 
 Install `pip3 install prompt_toolkit`.
