@@ -39,6 +39,8 @@ A Python approach has been used instead: the usage of `{}` instead of `$`.
 Just run:
 
 ```bash
+git clone
+cd llama_term https://github.com/Kevinscki/llama_term.git
 python3 llama_shell.py
 ```
 
@@ -46,4 +48,4 @@ Install `pip3 install prompt_toolkit`.
 
 ## Testing
 
-Read `flag.txt` to test if the model runs correctly.
+Tell the model to find a flag to test if the model runs correctly.
