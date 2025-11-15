@@ -26,7 +26,7 @@ You may set:
 - `HISTORY_LINES` (How many added history to be stored in lines)
 
 ## Hallucinations
-As the model thought that was the way for logging on smb (reviewing the scripts can show). Running `BUMP()` in terminal may fix some issues by clearing the context in background (you can modify the HISTORY_LINES and modify the prompt in `history` for a tailored or a more accurate experience, but provide some examples for the model).
+As the model thought that was the way for smb login (reviewing the scripts can show). Running `BUMP()` in terminal may fix some issues by clearing the context in background (you can modify the HISTORY_LINES and modify the prompt in `history` for a tailored or a more accurate experience, but provide some examples for the model).
 
 ## Variables
 
