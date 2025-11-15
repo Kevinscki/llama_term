@@ -31,9 +31,7 @@ Running `BUMP()` in terminal may fix some issues by clearing the context in back
 
 ## Variables
 
-A Python approach has been used instead: the usage of `{}` instead of `# llama_term
-
-A fun short script that runs AI-controlled shell commands.
+A Python approach has been used instead: the usage of `{}` instead of `$`.
 
 
 ## Usage
