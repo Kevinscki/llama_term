@@ -27,7 +27,7 @@ You may set:
 
 ## Hallucinations
 
-Running `BUMP()` in terminal may fix some issues.
+Running `BUMP()` in terminal may fix some issues by clearing the context in background(you can modify the HISTORY_LINES and modify the prompt in `history` for a tailored experience).
 
 ## Variables
 
@@ -35,29 +35,6 @@ A Python approach has been used instead: the usage of `{}` instead of `# llama_t
 
 A fun short script that runs AI-controlled shell commands.
 
-## How it works
-
-The process is simple:
-
-**command → execute**
-
-When that fails:
-
-**command → execute → ai prompted → user prompted → execute the script**
-
-The terminal is not an actual compiled shell, but it emulates what's mostly done in a terminal.
-
-The terminal is mostly for UNIX systems (but might also work with Windows).
-
-## Settings
-
-You may set:
-
-- `OLLAMA_MODEL` (Default: `qwen2.5-coder:3b`)
-- `BASE_DIR`
-- `HISTORY_LINES` (How many added history to be stored in lines)
-
-.
 
 ## Usage
 
@@ -67,7 +44,7 @@ Just run:
 py llama_shell.py
 ```
 
-Install `prompt_toolkit` using `pip3`.
+Install `pip3 install prompt_toolkit`.
 
 ## Testing
 
