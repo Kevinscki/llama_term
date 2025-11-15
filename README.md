@@ -43,11 +43,12 @@ cd llama_term
 python3 llama_shell.py
 ```
 
-Install `pip3 install prompt_toolkit`.
+Install `pip3 install prompt-toolkit`.
 If any issues run this:
 ```bash
 python3 -m venv .env
 source ./.env/bin/activate
+pip3 install prompt-toolkit
 python3 llama_shell.py
 ```
 ## Testing
