@@ -1,6 +1,6 @@
 # llama_term
 
-An Ai driven python script that operates as Linux terminal through the help from a local ollama model
+An Ai driven python script that operates as Linux terminal through the help from a local ollama model.
 ![Alt text](screenshotpic.png)
 
 ## How it works
@@ -26,8 +26,7 @@ You may set:
 - `HISTORY_LINES` (How many added history to be stored in lines)
 
 ## Hallucinations
-
-Running `BUMP()` in terminal may fix some issues by clearing the context in background (you can modify the HISTORY_LINES and modify the prompt in `history` for a tailored experience).
+As the model thought that was the way for logging on smb (reviewing the scripts can show). Running `BUMP()` in terminal may fix some issues by clearing the context in background (you can modify the HISTORY_LINES and modify the prompt in `history` for a tailored or a more accurate experience, but provide some examples for the model).
 
 ## Variables
 
@@ -45,7 +44,12 @@ python3 llama_shell.py
 ```
 
 Install `pip3 install prompt_toolkit`.
-
+If any issues run this:
+```bash
+python3 -m venv .env
+source ./.env/bin/activate
+python3 llama_shell.py
+```
 ## Testing
 
 Tell the model to find a flag to test if the model runs correctly.
