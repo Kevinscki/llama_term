@@ -1,1 +1,1 @@
-1234 is the key pass
+FLAG{Th3_41_5h311_w0rk5}
