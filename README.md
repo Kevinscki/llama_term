@@ -27,7 +27,7 @@ You may set:
 
 ## Hallucinations
 
-Running `BUMP()` in terminal may fix some issues by clearing the context in background(you can modify the HISTORY_LINES and modify the prompt in `history` for a tailored experience).
+Running `BUMP()` in terminal may fix some issues by clearing the context in background (you can modify the HISTORY_LINES and modify the prompt in `history` for a tailored experience).
 
 ## Variables
 
