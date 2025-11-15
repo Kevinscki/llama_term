@@ -39,8 +39,8 @@ A Python approach has been used instead: the usage of `{}` instead of `$`.
 Just run:
 
 ```bash
-git clone
-cd llama_term https://github.com/Kevinscki/llama_term.git
+git clone https://github.com/Kevinscki/llama_term.git
+cd llama_term 
 python3 llama_shell.py
 ```
 
