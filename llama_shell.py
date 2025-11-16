@@ -291,8 +291,8 @@ while True:
     if cmd_lower in ("exit", "quit"):
         print ("Goodbye!")
         break
-    elif cmd_lower.startswith("cd"):
-            parts = cmd_lower.split(maxsplit=1)
+    elif input_command.startswith("cd"):
+            parts = input_command.split(maxsplit=1)
             if len(parts) == 1:
                 target = Path.home()
             else:
