@@ -234,7 +234,7 @@ variables = {
 while True:
     trim_file(LOG_FILE, 67+HISTORY_LINES)  # Keep only the first 67 lines
     current_dir=Path.cwd()
-    prompt_str = f"{CYAN}{USERNAME}{RESET}@{GREEN}{COMPUTERNAME}{RESET} {GREEN}[{current_dir}]{RESET} ~ "
+    prompt_str = f"┌─[{CYAN}{USERNAME}{RESET}@{GREEN}{COMPUTERNAME}{RESET}{GREEN}]─[{current_dir}]{RESET}\n└──╼{YELLOW}> "
     
     cmd_lines=[]
     try:
