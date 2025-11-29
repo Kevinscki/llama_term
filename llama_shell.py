@@ -232,14 +232,20 @@ variables = {
     }
 # Main loop
 while True:
-    trim_file(LOG_FILE, 67+HISTORY_LINES)  # Keep only the first 67 lines
+    trim_file(LOG_FILE, 71+HISTORY_LINES)  # Keep only the first 67 lines
     current_dir=Path.cwd()
-    prompt_str = f"┌─[{CYAN}{USERNAME}{RESET}@{GREEN}{COMPUTERNAME}{RESET}{GREEN}]─[{current_dir}]{RESET}\n└──╼{YELLOW}> "
+    prompt_str = f"{GREEN}┌─[{CYAN}{USERNAME}{RESET}@{WHITE}{BOLD}{COMPUTERNAME}{RESET}{GREEN}]─[{WHITE}{BOLD}{current_dir}{RESET}{GREEN}]\n└──╼{YELLOW}> "
     
     cmd_lines=[]
     try:
         cmd_line = session.prompt(ANSI(prompt_str)).format(**variables)#added ANSI for color
     except KeyboardInterrupt:
+        continue
+    except KeyError as e:
+        print(f"{CYAN}Variable error, you used {YELLOW}{{}} "
+      f"{CYAN}-> for variables, use double {YELLOW}{{{{content}}}} {CYAN}for normal braces or JSON {YELLOW}{{{{content:value}}}}"
+      f"{CYAN} instead\nerror: {RESET}{e} not a set variable")
+
         continue
     try:
         while True:
