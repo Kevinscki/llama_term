@@ -2,6 +2,7 @@ import os
 import subprocess
 from pathlib import Path
 import shutil
+import time
 import readline
 import shlex
 
@@ -134,6 +135,7 @@ def handle_error(failed_command, exit_code):
 
         # Get AI suggestion
         try:
+            start_time=time.time()
             with TEMP_SCRIPT.open("w") as temp_file:
                 subprocess.run(
                     f"cat {LOG_FILE} | {ollama_path} run {OLLAMA_MODEL} | sed 's/```bash//g; s/```//g' > {TEMP_SCRIPT}",
@@ -144,6 +146,8 @@ def handle_error(failed_command, exit_code):
                     bufsize=1,
                     check=True
                 )
+            end_time=time.time()
+            elapsed=end_time-start_time
         except subprocess.CalledProcessError:
             print(RED + "[ERROR] Failed to get AI response. Check your Ollama installation." + RESET)
             return
@@ -153,7 +157,7 @@ def handle_error(failed_command, exit_code):
             return
 
         # Display AI suggestion
-        print(CYAN + "Suggested code:" + RESET)
+        print(CYAN + "Suggested code (took "+ f"{elapsed:.6f}" + " seconds to generate):"+ RESET)
         print("-"*40)
         with TEMP_SCRIPT.open("r") as f:
             print(f.read())
