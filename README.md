@@ -39,14 +39,16 @@ Just run:
 
 ```bash
 git clone https://github.com/Kevinscki/llama_term.git
-cd llama_term 
+cd llama_term
+chmod +x ./install.sh
+./install.sh  
 python3 llama_shell.py
 ```
 
 Install `pip3 install prompt-toolkit`.
 If any issues run this:
 ```bash
-python3 -m venv .env
+python3 -m venv .env #create the python environment (I dont advise using --break-system-packages)
 source ./.env/bin/activate
 pip3 install prompt-toolkit
 python3 llama_shell.py
