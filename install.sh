@@ -1,4 +1,3 @@
-!#/bin/sh
 sudo apt install snap -y
 sudo apt install snapd -y
 sudo systemctl enable --now snapd
