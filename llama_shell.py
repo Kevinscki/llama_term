@@ -7,6 +7,7 @@ import readline
 import shlex
 
 from prompt_toolkit.formatted_text import ANSI #the ANSI coloring
+#from prompt_toolkit.formatted_text import formatted_text as ANSI
 
 readline.parse_and_bind("tab: complete") #tab
 readline.parse_and_bind("set editing-mode emacs")
@@ -34,7 +35,7 @@ LOG_FILE = HISTORY_DIR / "log_bash.txt"
 USER_ERROR_TEMP = BASE_DIR / "user_errors_temp.txt"
 TEMP_ERROR_LOG = BASE_DIR / "error_logs_temp.txt"
 TEMP_SCRIPT = BASE_DIR / "temp_script.sh"
-HISTORY_LINES=0  # history size n-lines (larger history not advised)
+HISTORY_LINES=1  # history size n-lines (larger history not advised)
 current_dir = Path.cwd()
 
 
@@ -236,7 +237,7 @@ variables = {
     }
 # Main loop
 while True:
-    trim_file(LOG_FILE, 71+HISTORY_LINES)  # Keep only the first 67 lines
+    trim_file(LOG_FILE, 75+HISTORY_LINES)  # Keep only the first 67 lines
     current_dir=Path.cwd()
     prompt_str = f"{GREEN}┌─[{CYAN}{USERNAME}{RESET}@{WHITE}{BOLD}{COMPUTERNAME}{RESET}{GREEN}]─[{WHITE}{BOLD}{current_dir}{RESET}{GREEN}]\n└──╼{YELLOW}> "
     
