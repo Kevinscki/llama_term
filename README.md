@@ -27,7 +27,7 @@ You may set:
 
 
 ## Hallucinations
-As the model thought that was the way for smb login (reviewing the scripts can show). Running `BUMP()` in terminal may fix some issues by clearing the context in background (you can modify the `HISTORY_LINES` and modify the prompt in `history/log_bash.txt or history/log_windows.txt` for a tailored or a more accurate experience, but provide some examples for the model).
+As the model can get to think something weird (reviewing the scripts given can show). Running `BUMP()` in terminal may fix some issues by clearing the context in background (you can modify the `HISTORY_LINES` and modify the prompt in `history/log_bash.txt or history/log_windows.txt` for a tailored or a more accurate experience, but provide some examples for the model).
 
 ## Variables
 
