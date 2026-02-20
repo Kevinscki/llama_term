@@ -25,14 +25,16 @@ You may set:
 - `BASE_DIR`
 - `HISTORY_LINES` (How many added history to be stored in lines)
 
+
 ## Hallucinations
-As the model thought that was the way for smb login (reviewing the scripts can show). Running `BUMP()` in terminal may fix some issues by clearing the context in background (you can modify the HISTORY_LINES and modify the prompt in `history` for a tailored or a more accurate experience, but provide some examples for the model).
+As the model thought that was the way for smb login (reviewing the scripts can show). Running `BUMP()` in terminal may fix some issues by clearing the context in background (you can modify the `HISTORY_LINES` and modify the prompt in `history/log_bash.txt or history/log_windows.txt` for a tailored or a more accurate experience, but provide some examples for the model).
 
 ## Variables
 
-A Python approach has been used instead: the usage of `{}` instead of `$`.
+Variables will be stored in persistence just like a linux shell, The ai owever will not access the variables
 
-
+## Requirements
+Make sure you have `ollama` installed either by snap or from the official website, the model defaults to `qwen2.5-coder:3b`, You can download with `ollama pull`, a model suitable for your machine and needs and replace the `OLLAMA_MODEL` variable inside `llama_shell.py`
 ## Usage
 
 Just run:
@@ -55,4 +57,4 @@ python3 llama_shell.py
 ```
 ## Testing
 
-Tell the model to find a flag to test if the model runs correctly.
+Tell the model to list files or find a file, observe the code after.
