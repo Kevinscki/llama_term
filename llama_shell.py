@@ -212,7 +212,6 @@ def handle_error(failed_command, exit_code):
                 text=True,
                 bufsize=1,
             )
-            os.system(f"rm {TEMP_SCRIPT}")
             # Read line by line
             endline=True
             while endline:
@@ -228,6 +227,7 @@ def handle_error(failed_command, exit_code):
                     continue
 
                 if line.startswith("AI__END__"):
+                    line=""
                     endline=False
                 print(line)
 
