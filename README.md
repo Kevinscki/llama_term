@@ -42,8 +42,6 @@ Just run:
 ```bash
 git clone https://github.com/Kevinscki/llama_term.git
 cd llama_term
-chmod +x ./install.sh
-./install.sh  
 python3 llama_shell.py
 ```
 
