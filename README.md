@@ -31,7 +31,7 @@ As the model thought that was the way for smb login (reviewing the scripts can s
 
 ## Variables
 
-Variables will be stored in persistence just like a linux shell, The ai owever will not access the variables
+Variables will be stored in persistence just like a linux shell, The ai owever will not access the variables.
 
 ## Requirements
 Make sure you have `ollama` installed either by snap or from the official website, the model defaults to `qwen2.5-coder:3b`, You can download with `ollama pull`, a model suitable for your machine and needs and replace the `OLLAMA_MODEL` variable inside `llama_shell.py`
