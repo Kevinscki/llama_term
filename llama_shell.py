@@ -42,7 +42,6 @@ TEMP_ERROR_LOG = BASE_DIR / "error_logs_temp.txt"
 TEMP_SCRIPT = BASE_DIR / "temp_script.sh"
 LOG_LINE=75
 HISTORY_LINES=1  # history size n-lines (larger history not advised)
-current_dir = Path.cwd()
 SENTINEL = "---CMD_END---"
 current_dir=Path.cwd()
 
@@ -64,6 +63,7 @@ bashcmd = subprocess.Popen(
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
     stderr=subprocess.STDOUT,
+    cwd=current_dir,
     text=True,
     shell=True,
     bufsize=1,
@@ -139,7 +139,7 @@ def handle_error(failed_command, exit_code):
     try:
         global always_execute
         global ollama_path
-        print(YELLOW + "Processing..." + RESET)
+        print(CYAN + "Processing..." + RESET)
         print("")
 
         # Log failed command
@@ -149,16 +149,31 @@ def handle_error(failed_command, exit_code):
         # Get AI suggestion
         try:
             start_time=time.time()
-            with TEMP_SCRIPT.open("w") as temp_file:
-                subprocess.run(
-                    f"cat {LOG_FILE} | {ollama_path} run {OLLAMA_MODEL} | sed 's/```bash//g; s/```//g' > {TEMP_SCRIPT}",
-                    shell=True,
-                    stdout=temp_file,
+            with LOG_FILE.open("r") as log_file:
+               ai_subprocess=subprocess.Popen(
+                    [ollama_path, "run", OLLAMA_MODEL],
+                    stdin=log_file,
+                    stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
-                    text=True,
+                    text=True, 
                     bufsize=1,
-                    check=True
-                )
+                    )
+            
+            
+            #save to file and print
+            with open(TEMP_SCRIPT,'w') as temp_file:
+                print("-"*40)
+                for chunk in ai_subprocess.stdout:
+                        cleanline=chunk.replace("```bash","").replace("```","")
+        
+                        #simulate word printing for sanity
+                        for word in cleanline.split():
+                            print(word, end=" ", flush=True)
+                        temp_file.write(cleanline)
+                        print("")
+                        temp_file.flush()
+                print("-"*40)
+            ai_subprocess.wait()
             end_time=time.time()
             elapsed=end_time-start_time
         except KeyboardInterrupt:
@@ -174,16 +189,13 @@ def handle_error(failed_command, exit_code):
 
         # Display AI suggestion
         print(CYAN + "Suggested code (took "+ f"{elapsed:.6f}" + " seconds to generate):"+ RESET)
-        print("-"*40)
-        with TEMP_SCRIPT.open("r") as f:
-            print(f.read())
-        print("-"*40)
 
         # Ask user if they want to execute
         execute_now=False
         if always_execute:
             chicken=1
         else:
+            print("")
             execute_choice = input("Execute AI suggestion? (y/n/a for always): ").lower()
             if execute_choice == "a":
                 always_execute = True
@@ -290,7 +302,9 @@ while True:
     trim_file(LOG_FILE, LOG_LINE+HISTORY_LINES)  # Keep only the first 67 lines
     last_exit_code = "0"
     prompt_str = f"{GREEN}┌─[{CYAN}{USERNAME}{RESET}@{WHITE}{BOLD}{COMPUTERNAME}{RESET}{GREEN}]─[{WHITE}{BOLD}{current_dir}{RESET}{GREEN}]\n└──╼{YELLOW}{BOLD} $"
+    bashcmd.stdin.write(f"cd {str(current_dir)} \n")
     
+    bashcmd.stdin.flush()
     cmd_lines=[]
     try:
         cmd_line = session.prompt(ANSI(prompt_str))#added ANSI for color
