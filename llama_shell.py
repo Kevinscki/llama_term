@@ -44,6 +44,7 @@ LOG_LINE=75
 HISTORY_LINES=1  # history size n-lines (larger history not advised)
 SENTINEL = "---CMD_END---"
 current_dir=Path.cwd()
+simulate_typing=True
 
 
 # Ensure directories exist
@@ -65,10 +66,9 @@ bashcmd = subprocess.Popen(
     stderr=subprocess.STDOUT,
     cwd=current_dir,
     text=True,
-    shell=True,
     bufsize=1,
     preexec_fn=os.setpgrp #isolate signals
-)
+    )
 
 # Header
 def show_header():
@@ -169,6 +169,8 @@ def handle_error(failed_command, exit_code):
                         #simulate word printing for sanity
                         for word in cleanline.split():
                             print(word, end=" ", flush=True)
+                            if simulate_typing:
+                                time.sleep(0.1)
                         temp_file.write(cleanline)
                         print("")
                         temp_file.flush()
@@ -250,8 +252,10 @@ def handle_error(failed_command, exit_code):
                 with TEMP_SCRIPT.open("r") as temp_file:
                     f.write(temp_file.read())
             if result.returncode != 0:
-                with open(TEMP_ERROR_LOG, "wb") as f:
-                    f.write(result.stderr)
+                with open(TEMP_ERROR_LOG, "w") as f:
+                    f.write(str(result.stderr))
+
+                    
                 with LOG_FILE.open("a") as f:
                     f.write("MISTAKE:\n")
                     with TEMP_ERROR_LOG.open("r") as err_file:
@@ -260,6 +264,7 @@ def handle_error(failed_command, exit_code):
                 print(f"{CYAN}Some errors:")
                 with TEMP_ERROR_LOG.open("r") as err_file:
                     print(err_file.read())
+                    
             TEMP_SCRIPT.unlink(missing_ok=True)
             TEMP_ERROR_LOG.unlink(missing_ok=True)
         else:
@@ -268,7 +273,18 @@ def handle_error(failed_command, exit_code):
             TEMP_ERROR_LOG.unlink(missing_ok=True)
     except KeyboardInterrupt:
         print("You pressed 'ctrl +c', that stops stuff")
-
+def handle_broken_pipe():
+    global bashcmd
+    bashcmd = subprocess.Popen(
+    ["/bin/bash"],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    cwd=current_dir,
+    text=True,
+    bufsize=1,
+    preexec_fn=os.setpgrp #isolate signals
+    )
 def show_help():
 
     print()
@@ -302,9 +318,14 @@ while True:
     trim_file(LOG_FILE, LOG_LINE+HISTORY_LINES)  # Keep only the first 67 lines
     last_exit_code = "0"
     prompt_str = f"{GREEN}┌─[{CYAN}{USERNAME}{RESET}@{WHITE}{BOLD}{COMPUTERNAME}{RESET}{GREEN}]─[{WHITE}{BOLD}{current_dir}{RESET}{GREEN}]\n└──╼{YELLOW}{BOLD} $"
-    bashcmd.stdin.write(f"cd {str(current_dir)} \n")
+    try:
+        bashcmd.stdin.write(f"cd {str(current_dir)} \n")
+        bashcmd.stdin.flush()
+    except BrokenPipeError:
+        handle_broken_pipe()
+        handle_error(input_command,last_exit_code)
+        continue
     
-    bashcmd.stdin.flush()
     cmd_lines=[]
     try:
         cmd_line = session.prompt(ANSI(prompt_str))#added ANSI for color
@@ -312,7 +333,7 @@ while True:
         continue
     try:
         while True:
-            if cmd_line.endswith("\\"):
+            if cmd_line.endswith("\\") and (len(cmd_line)-(len(cmd_line.rstrip("\\"))%2==1)):
                 # remove trailing backslash and continue
                 cmd_lines.append(cmd_line[:-1])
                 cmd_line=str(input(f"{DIM}... {RESET}"))
@@ -376,6 +397,10 @@ while True:
         try:
             bashcmd.stdin.write(full_cmd)
             bashcmd.stdin.flush()
+        except BrokenPipeError:
+            handle_broken_pipe()
+            handle_error(input_command,last_exit_code)
+            continue
         except Exception as e:
             print(e+"[-] stdin did it")
         
