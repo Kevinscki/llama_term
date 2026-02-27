@@ -263,7 +263,7 @@ def handle_error(failed_command, exit_code):
                     f.write("\n")
                 print(f"{CYAN}Some errors:")
                 with TEMP_ERROR_LOG.open("r") as err_file:
-                    print(err_file.read())
+                    print(str(err_file.read()))
                     
             TEMP_SCRIPT.unlink(missing_ok=True)
             TEMP_ERROR_LOG.unlink(missing_ok=True)
@@ -333,7 +333,7 @@ while True:
         continue
     try:
         while True:
-            if cmd_line.endswith("\\") and (len(cmd_line)-(len(cmd_line.rstrip("\\"))%2==1)):
+            if cmd_line.endswith("\\") and (len(cmd_line)-len(cmd_line.rstrip("\\")))%2==1:
                 # remove trailing backslash and continue
                 cmd_lines.append(cmd_line[:-1])
                 cmd_line=str(input(f"{DIM}... {RESET}"))
@@ -384,7 +384,7 @@ while True:
         os.system("cls" if os.name == "nt" else "clear")
         continue
     elif cmd_lower.startswith("sudo"):#to fix and alias
-        print("Please dont sudo 😭😭😭..")
+        print("Please dont sudo 😭😭😭..")#will improve.. 
         continue
     elif cmd_lower == "help" or cmd_lower =="help()":
         show_help()

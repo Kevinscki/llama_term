@@ -44,12 +44,13 @@ netstat -an
 For cyberecurity, use: Nmap,wireshark,nc,lynis,msfvenom etc.
 
 For system, use: uname -a, whoami, id
+For editing files: use vim
 
 #RULES:
 
 ✅ MUST Generate executable shell scripts only. (PLEASE COMMENT ALL EXPLANATIONS)
 
-✅ Again COMMENT ALL EXPLANATIONS
+✅ Again COMMENT ALL EXPLANATIONS !! 
 
 ✅ Again COMMENT ALL EXPLANATIONS, IT IS CRITICALLY IMPORTANT.
 
@@ -73,4 +74,3 @@ For system, use: uname -a, whoami, id
 
 
 
-USER: hello
