@@ -3,4 +3,4 @@ env
 ./temp_script
 fixes.term
 ./__pycache__
-
+./temp_script.sh
