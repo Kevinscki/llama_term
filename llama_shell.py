@@ -6,7 +6,7 @@ import time
 import readline
 import shlex
 import sys
-
+from configuration_variables import *
 from prompt_toolkit.formatted_text import ANSI #the ANSI coloring
 #from prompt_toolkit.formatted_text import formatted_text as ANSI
 #using better prompt handling
@@ -17,39 +17,7 @@ session=PromptSession()
 readline.parse_and_bind("tab: complete") #tab
 readline.parse_and_bind("set editing-mode emacs")
 # ANSI colors (cross-platform; works on most terminals)
-ESC     = "\033[0m"
-BLUE    = "\033[34m"
-GREEN   = "\033[92m"
-WHITE   = "\033[37m"
-CYAN    = "\033[96m"
-YELLOW  = "\033[33m"
-RED     = "\033[31m"
-RESET   = "\033[0m"
-BOLD    = "\033[1m"
-DIM     = "\033[2m"
-GREY    = "\033[90m"
 
-# Configuration
-USERNAME = os.getenv("USER") or os.getenv("USERNAME")
-OLLAMA_MODEL ="qwen2.5-coder:3b"
-COMPUTERNAME = os.environ.get("COMPUTERNAME", os.uname().nodename if hasattr(os, "uname") else "PC")
-#BASE_DIR = Path.home() / "projects" / "ai" / "llama_term"
-BASE_DIR = Path(__file__).resolve().parent
-HISTORY_DIR = BASE_DIR / "history"
-LOG_FILE = HISTORY_DIR / "log_bash.txt"
-USER_ERROR_TEMP = BASE_DIR / "user_errors_temp.txt"
-TEMP_ERROR_LOG = BASE_DIR / "error_logs_temp.txt"
-TEMP_SCRIPT = BASE_DIR / "temp_script.sh"
-LOG_LINE=75
-HISTORY_LINES=1  # history size n-lines (larger history not advised)
-SENTINEL = "---CMD_END---"
-current_dir=Path.cwd()
-simulate_typing=True
-
-
-# Ensure directories exist
-BASE_DIR.mkdir(parents=True, exist_ok=True)
-HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Check if ollama exists
@@ -167,12 +135,11 @@ def handle_error(failed_command, exit_code):
                         cleanline=chunk.replace("```bash","").replace("```","")
         
                         #simulate word printing for sanity
-                        for word in cleanline.split():
-                            print(word, end=" ", flush=True)
+                        for ascii in cleanline:
+                            print(ascii, end="", flush=True)
                             if simulate_typing:
-                                time.sleep(0.1)
+                                time.sleep(0.004)
                         temp_file.write(cleanline)
-                        print("")
                         temp_file.flush()
                 print("-"*40)
             ai_subprocess.wait()
@@ -384,7 +351,11 @@ while True:
         os.system("cls" if os.name == "nt" else "clear")
         continue
     elif cmd_lower.startswith("sudo"):#to fix and alias
+<<<<<<< HEAD
         print("Please dont sudo 😭😭😭..")#will improve.. 
+=======
+        print("Please don't sudo 😭😭😭..")
+>>>>>>> 9b11303 (separated variable file for imports and added a model file for remaking a custom model)
         continue
     elif cmd_lower == "help" or cmd_lower =="help()":
         show_help()
