@@ -351,11 +351,7 @@ while True:
         os.system("cls" if os.name == "nt" else "clear")
         continue
     elif cmd_lower.startswith("sudo"):#to fix and alias
-<<<<<<< HEAD
         print("Please dont sudo 😭😭😭..")#will improve.. 
-=======
-        print("Please don't sudo 😭😭😭..")
->>>>>>> 9b11303 (separated variable file for imports and added a model file for remaking a custom model)
         continue
     elif cmd_lower == "help" or cmd_lower =="help()":
         show_help()
