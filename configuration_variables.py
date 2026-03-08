@@ -14,7 +14,7 @@ GREY    = "\033[90m"
 
 # Configuration
 USERNAME = os.getenv("USER") or os.getenv("USERNAME")
-OLLAMA_MODEL ="qwen2.5_bash:latest"
+OLLAMA_MODEL ="bash_model:latest"
 COMPUTERNAME = os.environ.get("COMPUTERNAME", os.uname().nodename if hasattr(os, "uname") else "PC")
 #BASE_DIR = Path.home() / "projects" / "ai" / "llama_term"
 BASE_DIR = Path(__file__).resolve().parent

@@ -64,6 +64,7 @@ def show_header():
     f"{DIM}{GREY}│{RESET} {WHITE} BUMP(){RESET} {DIM}→ Reset model context (fixes hallucinations/errors){RESET}\n"
     f"{DIM}{GREY}│{RESET} {WHITE} BANNER(){RESET} {DIM}→ Display this banner again{RESET}\n"
     f"{DIM}{GREY}│{RESET} {WHITE} LOAD(){RESET} {DIM}→ Load and prepare your AI model{RESET}\n"
+    f"{DIM}{GREY}│{RESET} {WHITE} RESET(){RESET} {DIM}→ Reset the shell session\n"
     f"{DIM}{GREY}│{RESET}\n"
     f"{DIM}{GREY}│{RESET}\n"
     f"{DIM}{GREY}└─{RESET} {WHITE}Ctrl+C{RESET} {DIM}→ Cancel current task{RESET}"
@@ -107,6 +108,7 @@ def handle_error(failed_command, exit_code):
     try:
         global always_execute
         global ollama_path
+        global current_dir
         print(CYAN + "Processing..." + RESET)
         print("")
 
@@ -184,13 +186,12 @@ def handle_error(failed_command, exit_code):
                 script.writelines(scriptlines)
 
             # Run the script
-            global current_dir
-
             result = subprocess.Popen(
                 ["/bin/bash", TEMP_SCRIPT],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                cwd=current_dir,
                 bufsize=1,
             )
             # Read line by line
@@ -318,6 +319,9 @@ while True:
 
     if not input_command:
         continue
+    if input_command=="RESET()":
+    	handle_broken_pipe()
+    	continue
     if input_command=="BUMP()":
         proc = subprocess.Popen(
         ["ollama", "run", OLLAMA_MODEL, ""],
