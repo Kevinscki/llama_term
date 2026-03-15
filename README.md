@@ -28,14 +28,13 @@ You may set:
 
 ## Hallucinations
 As the model can get to think something weird (reviewing the scripts given can show). Running `BUMP()` in terminal may fix some issues by clearing the context in background. You can modify the `HISTORY_LINES` and modify the prompt in `history/log_bash.txt or history/log_windows.txt` for a tailored or a more accurate experience, but provide some examples for the model.
-You can also preload the model by typing `LOAD()` before sending sny other prompts.
+You can also preload the model by typing `LOAD()` before sending any other prompts.
 ## Variables
 
 Variables will be stored in persistence just like a linux shell, The ai owever will not access the variables.
 
 ## Requirements
-Make sure you have `ollama` installed either by snap or from the official website. You can download with `ollama pull`, a model suitable for your machine and needs and replace the `OLLAMA_MODEL` variable inside `llama_shell.py`
-n
+Make sure you have `ollama` installed either by snap or from the official website. You can download with `ollama pull`, a model suitable for your machine and needs and replace the `OLLAMA_MODEL` variable
 ## Usage
 
 Just run:
