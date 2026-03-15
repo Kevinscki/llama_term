@@ -8,6 +8,8 @@ import shlex
 import sys
 from configuration_variables import *
 from prompt_toolkit.formatted_text import ANSI #the ANSI coloring
+import signal
+
 #from prompt_toolkit.formatted_text import formatted_text as ANSI
 #using better prompt handling
 from prompt_toolkit import PromptSession
@@ -163,9 +165,7 @@ def handle_error(failed_command, exit_code):
 
         # Ask user if they want to execute
         execute_now=False
-        if always_execute:
-            chicken=1
-        else:
+        if not always_execute:
             print("")
             execute_choice = input("Execute AI suggestion? (y/n/a for always): ").lower()
             if execute_choice == "a":
@@ -221,17 +221,19 @@ def handle_error(failed_command, exit_code):
                     f.write(temp_file.read())
             if result.returncode != 0:
                 with open(TEMP_ERROR_LOG, "w") as f:
-                    f.write(str(result.stderr))
+                    f.write(result.stderr.read())
 
                     
                 with LOG_FILE.open("a") as f:
                     f.write("MISTAKE:\n")
-                    with TEMP_ERROR_LOG.open("r") as err_file:
-                        f.write(err_file.read())
+                    with TEMP_ERROR_LOG.open("r") as err_file_log:
+                        f.write(err_file_log.read())
                     f.write("\n")
                 print(f"{CYAN}Some errors:")
                 with TEMP_ERROR_LOG.open("r") as err_file:
-                    print(str(err_file.read()))
+                    err_content=err_file.read()
+                    print(err_content)
+                    err_file.close()
                     
             TEMP_SCRIPT.unlink(missing_ok=True)
             TEMP_ERROR_LOG.unlink(missing_ok=True)
@@ -320,8 +322,8 @@ while True:
     if not input_command:
         continue
     if input_command=="RESET()":
-    	handle_broken_pipe()
-    	continue
+        handle_broken_pipe()
+        continue
     if input_command=="BUMP()":
         proc = subprocess.Popen(
         ["ollama", "run", OLLAMA_MODEL, ""],
@@ -344,8 +346,6 @@ while True:
     elif input_command == "BANNER()":
         show_header()
         continue
-    else:
-        chicken=1
     cmd_lower = input_command.lower()
     if cmd_lower in ("exit", "quit"):
         print ("Goodbye!")
@@ -415,6 +415,7 @@ while True:
             continue
 
     except KeyboardInterrupt:
+        os.killpg(os.getpgid(bashcmd.pid), signal.SIGINT)
         continue
     except Exception as e:
         with USER_ERROR_TEMP.open("w") as f:
