@@ -74,3 +74,6 @@ For editing files: use vim
 
 
 
+
+USER: remove __pycache__ then git commit that I fixed the merge adding my risk parsing version of the python code and added envs
+

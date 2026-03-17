@@ -124,7 +124,6 @@ def handle_error(failed_command, exit_code):
 
         # Get AI suggestion
         try:
-<<<<<<< Updated upstream
             start_time=time.time()
             with LOG_FILE.open("r") as log_file:
                ai_subprocess=subprocess.Popen(
@@ -133,15 +132,6 @@ def handle_error(failed_command, exit_code):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
                     text=True, 
-=======
-            with TEMP_SCRIPT.open("w") as tempfile:
-                subprocess.run(
-                    f"cat {LOG_FILE} | {ollama_path} run {OLLAMA_MODEL} | sed 's/```bash//g; s/```//g' > {TEMP_SCRIPT}",
-                    stderr=subprocess.DEVNULL,
-                    stdout=tempfile,
-                    shell=True,
-                    text=True,
->>>>>>> Stashed changes
                     bufsize=1,
                     )
             
@@ -373,28 +363,7 @@ while True:
     if cmd_lower in ("exit", "quit"):
         print ("Goodbye!")
         break
-<<<<<<< Updated upstream
    
-=======
-    elif input_command.startswith("cd"):
-            parts = input_command.split(maxsplit=1)
-            if len(parts) == 1:
-                target = Path.home()
-            else:
-                target = Path(parts[1]).expanduser()
-
-            if target.exists() and target.is_dir():
-                try:
-                    last_dir = Path.cwd()
-                    os.chdir(target)
-                    current_dir=last_dir
-                except PermissionError:
-                    print("Permission denied.")
-            else:
-                print(f"No such directory: {target}")
-            continue
-            
->>>>>>> Stashed changes
     elif cmd_lower == "clear"or cmd_lower == "cls":
         os.system("cls" if os.name == "nt" else "clear")
         continue
