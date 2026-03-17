@@ -2,48 +2,57 @@ import os
 import subprocess
 from pathlib import Path
 import shutil
-import time
 import readline
 import shlex
-import pty
-import sys
-from configuration_variables import *
+
 from prompt_toolkit.formatted_text import ANSI #the ANSI coloring
-import signal
-
-#from prompt_toolkit.formatted_text import formatted_text as ANSI
-#using better prompt handling
-from prompt_toolkit import PromptSession
-session=PromptSession()
-
 
 readline.parse_and_bind("tab: complete") #tab
 readline.parse_and_bind("set editing-mode emacs")
 # ANSI colors (cross-platform; works on most terminals)
+ESC     = "\033[0m"
+BLUE    = "\033[34m"
+GREEN   = "\033[92m"
+WHITE   = "\033[37m"
+CYAN    = "\033[96m"
+YELLOW  = "\033[33m"
+RED     = "\033[31m"
+RESET   = "\033[0m"
+BOLD    = "\033[1m"
+DIM     = "\033[2m"
+GREY    = "\033[90m"
+
+# Configuration
+USERNAME = os.getenv("USER") or os.getenv("USERNAME")
+OLLAMA_MODEL ="qwen2.5-coder:3b"
+COMPUTERNAME = os.environ.get("COMPUTERNAME", os.uname().nodename if hasattr(os, "uname") else "PC")
+#BASE_DIR = Path.home() / "projects" / "ai" / "llama_term"
+BASE_DIR = Path.cwd()
+HISTORY_DIR = BASE_DIR / "history"
+LOG_FILE = HISTORY_DIR / "log_bash.txt"
+USER_ERROR_TEMP = BASE_DIR / "user_errors_temp.txt"
+TEMP_ERROR_LOG = BASE_DIR / "error_logs_temp.txt"
+TEMP_SCRIPT = BASE_DIR / "temp_script.sh"
+HISTORY_LINES=0  # history size n-lines (larger history not advised)
+current_dir = Path.cwd()
 
 
+#using better prompt handling
+from prompt_toolkit import PromptSession
+session=PromptSession()
 
-# Check if ollama exists
-ollama_path = shutil.which("ollama")
-if not ollama_path:
-    print(RED + "Ollama not found. AI suggestions unavailable, Please install it..." + RESET)
+#keyboard signal handler
+import signal
+def handle_sigint(signum,frame):
+    print("you did ctrl+c. that stops stuff")
 
-#CMD handler
-system_env=os.environ.copy()
-bashcmd = subprocess.Popen(
-    ["/bin/bash"],
-    stdin=subprocess.PIPE,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.STDOUT,
-    cwd=current_dir,
-    text=True,
-    bufsize=1,
-    preexec_fn=os.setpgrp #isolate signals
-    )
-bashcmd.stdin.write(f"source {ENV2}\n")
-bashcmd.stdin.flush()
-bashcmd.stdin.write(f"env >{ENV1}\n")
-bashcmd.stdin.flush()
+signal.signal(signal.SIGINT, handle_sigint)
+
+# Ensure directories exist
+BASE_DIR.mkdir(parents=True, exist_ok=True)
+HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+
+
 # Header
 def show_header():
     VARIABLE_NAME="VARIABLE_NAME"
@@ -67,12 +76,10 @@ def show_header():
     
     hint = (
     f"{DIM}{GREY}┌─{RESET} {WHITE}HELP{RESET} {DIM}→ Show all available commands{RESET}\n"
-    f"{DIM}{GREY}│{RESET} {WHITE} BUMP(){RESET} {DIM}→ Reset model context (fixes hallucinations/errors){RESET}\n"
+    f"{DIM}{GREY}│{RESET} {WHITE} BUMP{RESET} {DIM}→ Reset model context (fixes hallucinations/errors){RESET}\n"
     f"{DIM}{GREY}│{RESET} {WHITE} BANNER(){RESET} {DIM}→ Display this banner again{RESET}\n"
-    f"{DIM}{GREY}│{RESET} {WHITE} LOAD(){RESET} {DIM}→ Load and prepare your AI model{RESET}\n"
-    f"{DIM}{GREY}│{RESET} {WHITE} RESET(){RESET} {DIM}→ Reset the shell session\n"
     f"{DIM}{GREY}│{RESET}\n"
-    f"{DIM}{GREY}│{RESET}\n"
+    f"{DIM}{GREY}│{RESET} {WHITE} {RESET}{DIM}Variables: {RESET}{WHITE}set NAME=value, {RESET}{DIM}then use {RESET}{WHITE}{{NAME}}{RESET}\n"
     f"{DIM}{GREY}└─{RESET} {WHITE}Ctrl+C{RESET} {DIM}→ Cancel current task{RESET}"
     )
 
@@ -113,39 +120,20 @@ always_execute = False
 def handle_error(failed_command, exit_code):
     try:
         global always_execute
-        global ollama_path
-        global current_dir
-        print(CYAN + "Processing..." + RESET)
-        print("")
+
+        print(YELLOW + "Processing..." + RESET)
 
         # Log failed command
         with LOG_FILE.open("a") as f:
             f.write(f"\nUSER: {failed_command}\n\n")
+        # Check if ollama exists
+        ollama_path = shutil.which("ollama")
+        if not ollama_path:
+            print(RED + "[ERROR] Ollama not found. AI suggestions unavailable." + RESET)
+            return
 
         # Get AI suggestion
         try:
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-            start_time=time.time()
-            with LOG_FILE.open("r") as log_file:
-               ai_subprocess=subprocess.Popen(
-                    [ollama_path, "run", OLLAMA_MODEL],
-                    stdin=log_file,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
-                    text=True, 
-=======
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
             with TEMP_SCRIPT.open("w") as tempfile:
                 subprocess.run(
                     f"cat {LOG_FILE} | {ollama_path} run {OLLAMA_MODEL} | sed 's/```bash//g; s/```//g' > {TEMP_SCRIPT}",
@@ -153,38 +141,11 @@ def handle_error(failed_command, exit_code):
                     stdout=tempfile,
                     shell=True,
                     text=True,
->>>>>>> Stashed changes
                     bufsize=1,
-                    )
-            
-            
-            #save to file and print
-            with open(TEMP_SCRIPT,'w') as temp_file:
-                print("-"*40)
-                risk_counter=0
-                for chunk in ai_subprocess.stdout:
-                        cleanline=chunk.replace("```bash","").replace("```","")
-                        keywords=["rm -rf", "rmdir", "sudo", "umount","systemctl","iw"]
-                        if any (kw in cleanline for kw in keywords):
-                            cleanline=f"{RED}{cleanline}{RESET}"
-                            risk_counter+=1
-                            always_execute=False
-                        #simulate word printing for sanity
-                        for ascii in cleanline:
-                            print(ascii, end="", flush=True)
-                            if simulate_typing:
-                                time.sleep(0.004)
-                        temp_file.write(cleanline)
-                        temp_file.flush()
-                print("-"*40)
-            ai_subprocess.wait()
-            end_time=time.time()
-            elapsed=end_time-start_time
-        except KeyboardInterrupt:
-            print("You pressed ctrl+c, that stops stuff")
-            return
+                    check=True
+                )
         except subprocess.CalledProcessError:
-            print(RED + "[ERROR] Failed to get AI response. Check your Ollama installation")
+            print(RED + "[ERROR] Failed to get AI response. Check your Ollama installation." + RESET)
             return
 
         if not TEMP_SCRIPT.exists():
@@ -192,83 +153,43 @@ def handle_error(failed_command, exit_code):
             return
 
         # Display AI suggestion
-        if not risk_counter==0:
-            print(CYAN + "Suggested code (took "+ f"{elapsed:.6f}" + " seconds to generate), "+RED+"and with "+str(risk_counter)+" RISKS factors."+ RESET)    
-        else:
-            print(CYAN + "Suggested code (took "+ f"{elapsed:.6f}" + " seconds to generate):"+ RESET)
+        print(CYAN + "Suggested code:" + RESET)
+        print("-"*40)
+        with TEMP_SCRIPT.open("r") as f:
+            print(f.read())
+        print("-"*40)
 
         # Ask user if they want to execute
         execute_now=False
-        if not always_execute:
-            print("")
+        if always_execute:
+            chicken=1
+        else:
             execute_choice = input("Execute AI suggestion? (y/n/a for always): ").lower()
             if execute_choice == "a":
                 always_execute = True
+                execute_choice = "y"
             if execute_choice == "y":
                 execute_now = True
         if execute_now or always_execute:
             print(GREY + DIM + "[AI ASSISTANT] Executing suggestion..." + RESET+ WHITE)
             TEMP_SCRIPT.chmod(0o755)
+            result = subprocess.run(f"bash {TEMP_SCRIPT}", shell=True, stderr=subprocess.PIPE)
             
-            # Write TEMP_SCRIPT
-            scriptlines = [
-                "echo AI__PWD_:$PWD\n",
-                "echo AI__END__1\n"
-            ]
-
-            with open(TEMP_SCRIPT, 'a') as script:
-                script.writelines(scriptlines)
-
-            # Run the script
-            result = subprocess.Popen(
-                ["/bin/bash", TEMP_SCRIPT],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=current_dir,
-                bufsize=1,
-            )
-            # Read line by line
-            endline=True
-            while endline:
-                line = result.stdout.readline()
-                if not line:
-                    break
-                line = line.rstrip()
-
-                if line.startswith("AI__PWD_:"):
-
-                    current_dir = line.split("AI__PWD_:", 1)[1]
-                    # print silently if you want
-                    continue
-
-                if line.startswith("AI__END__"):
-                    line=""
-                    endline=False
-                print(line)
-
-            result.stdout.close()
-            result.wait()
-
+            
             with LOG_FILE.open("a") as f:
                 with TEMP_SCRIPT.open("r") as temp_file:
                     f.write(temp_file.read())
             if result.returncode != 0:
-                with open(TEMP_ERROR_LOG, "w") as f:
-                    f.write(result.stderr.read())
-
-                    
+                with open(TEMP_ERROR_LOG, "wb") as f:
+                    f.write(result.stderr)
                 with LOG_FILE.open("a") as f:
                     f.write("MISTAKE:\n")
-                    with TEMP_ERROR_LOG.open("r") as err_file_log:
-                        f.write(err_file_log.read())
+                    with TEMP_ERROR_LOG.open("r") as err_file:
+                        f.write(err_file.read())
                     f.write("\n")
                 print(f"{CYAN}Some errors:")
                 with TEMP_ERROR_LOG.open("r") as err_file:
-                    err_content=err_file.read()
-                    print(err_content)
-                    err_file.close()
-                    
+                    print(err_file.read())
             TEMP_SCRIPT.unlink(missing_ok=True)
             TEMP_ERROR_LOG.unlink(missing_ok=True)
         else:
@@ -276,20 +197,8 @@ def handle_error(failed_command, exit_code):
             TEMP_SCRIPT.unlink(missing_ok=True)
             TEMP_ERROR_LOG.unlink(missing_ok=True)
     except KeyboardInterrupt:
-        print(GREY +"You pressed 'ctrl +c', that stops stuff"+RESET)
-def handle_broken_pipe():
-    global bashcmd
-    bashcmd = subprocess.Popen(
-    ["/bin/bash"],
-    stdin=subprocess.PIPE,
-    stdout=subprocess.PIPE,
-    env=env,
-    stderr=subprocess.STDOUT,
-    cwd=current_dir,
-    text=True,
-    bufsize=1,
-    preexec_fn=os.setpgrp #isolate signals
-    )
+        print("You pressed 'ctrl +c', that stops stuff")
+
 def show_help():
 
     print()
@@ -316,32 +225,28 @@ def show_help():
     print("  - Ollama installed (https://ollama.ai/) for AI suggestions")
     print("  - qwen2.5-coder:3b model: ollama pull qwen2.5-coder:3b")
     print()
-
+variables = {
+    "BASE_DIR": BASE_DIR,
+    "LOG_FILE": LOG_FILE,
+    "OLLAMA_MODEL": OLLAMA_MODEL
+    }
 # Main loop
-
 while True:
-    trim_file(LOG_FILE, LOG_LINE+HISTORY_LINES)  # Keep only the first 67 lines
-    last_exit_code = "0"
-    prompt_str = f"{GREEN}┌─[{CYAN}{USERNAME}{RESET}@{WHITE}{BOLD}{COMPUTERNAME}{RESET}{GREEN}]─[{WHITE}{BOLD}{current_dir}{RESET}{GREEN}]\n└──╼{YELLOW}{BOLD} $"
-    try:
-        bashcmd.stdin.write(f"cd {str(current_dir)} \n")
-        bashcmd.stdin.flush()
-    except BrokenPipeError:
-        handle_broken_pipe()
-        handle_error(input_command,last_exit_code)
-        continue
+    trim_file(LOG_FILE, 67+HISTORY_LINES)  # Keep only the first 67 lines
+    current_dir=Path.cwd()
+    prompt_str = f"{CYAN}{USERNAME}{RESET}@{GREEN}{COMPUTERNAME}{RESET} {GREEN}[{current_dir}]{RESET} ~ "
     
     cmd_lines=[]
     try:
-        cmd_line = session.prompt(ANSI(prompt_str))#added ANSI for color
+        cmd_line = session.prompt(ANSI(prompt_str)).format(**variables)#added ANSI for color
     except KeyboardInterrupt:
         continue
     try:
         while True:
-            if cmd_line.endswith("\\") and (len(cmd_line)-len(cmd_line.rstrip("\\")))%2==1:
+            if cmd_line.endswith("\\"):
                 # remove trailing backslash and continue
                 cmd_lines.append(cmd_line[:-1])
-                cmd_line=str(input(f"{DIM}... {RESET}"))
+                cmd_line=str(input(f"{DIM}... {RESET}")).format(**variables)
             else:
                 cmd_lines.append(cmd_line)
                 break
@@ -356,10 +261,7 @@ while True:
 
     if not input_command:
         continue
-    if input_command=="RESET()":
-        handle_broken_pipe()
-        continue
-    if input_command=="BUMP()":
+    if input_command=="BUMP":
         proc = subprocess.Popen(
         ["ollama", "run", OLLAMA_MODEL, ""],
         stdout=subprocess.DEVNULL,   # optionally hide output
@@ -368,38 +270,27 @@ while True:
         )
         print(f"{DIM}{YELLOW}The model {OLLAMA_MODEL} has been reset with PID {proc.pid} {RESET}")
         continue
-    elif input_command=="LOAD()":
-        print(f"{CYAN}{DIM}Loading model..{RESET}")
-        proc = subprocess.run(
-        f"cat {LOG_FILE} | {ollama_path} run {OLLAMA_MODEL}",
-        shell=True,
-        stdout=subprocess.DEVNULL,   # optionally hide output
-        stderr=subprocess.DEVNULL,   # optionally hide errors
-        stdin=subprocess.DEVNULL     # so it doesn’t wait for stdin
-        )
-        continue
-    elif input_command == "BANNER()":
+    else: 
+        chicken=1
+    if input_command == "BANNER()":
         show_header()
         continue
+    else:
+        chicken=1
+    if input_command.startswith("set"):
+        var_set=shlex.split(input_command)
+        assignments=var_set[1:]
+        for item in assignments:
+            if "=" not in item:
+                print("{YELLOW}{DIM}Nothing set here{RESET}")
+                continue  # skip bad assignments
+        
+            key, value = item.split("=", 1)
+            variables[key] = value
     cmd_lower = input_command.lower()
     if cmd_lower in ("exit", "quit"):
         print ("Goodbye!")
         break
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-   
-=======
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
     elif input_command.startswith("cd"):
             parts = input_command.split(maxsplit=1)
             if len(parts) == 1:
@@ -418,76 +309,22 @@ while True:
                 print(f"No such directory: {target}")
             continue
             
->>>>>>> Stashed changes
     elif cmd_lower == "clear"or cmd_lower == "cls":
         os.system("cls" if os.name == "nt" else "clear")
         continue
-    elif cmd_lower.startswith("sudo"):#to fix and alias
-        print("Please dont sudo 😭😭😭..")#will improve.. 
-        continue
-    elif cmd_lower == "help" or cmd_lower =="help()":
+    elif cmd_lower == "help":
         show_help()
         continue
 
     # Execute command and capture errors
     try:
-        # We ask bash to print the exit code ($?) and then the sentinel
-        full_cmd = f"{input_command}\necho PY_EXIT__CODE:$?\necho PY_DIRECTORY__:$PWD \necho {SENTINEL}\n"
-        try:
-            bashcmd.stdin.write(full_cmd)
-            bashcmd.stdin.flush()
-        except BrokenPipeError:
-            handle_broken_pipe()
-            handle_error(input_command,last_exit_code)
-            continue
-        except Exception as e:
-            print(e+"[-] stdin did it")
-        
-        
-        while True:
-            line = bashcmd.stdout.readline()
-            if not line or SENTINEL in line:
-                break
-            line = line.rstrip("\n")
-
-            # If the line contains our exit code prefix, capture it
-            if line.startswith("PY_EXIT__CODE:"):
-                last_exit_code = line.replace("PY_EXIT__CODE:", "").strip()
-                if "PY_EXIT__CODE:0" in line or not_terminal_counter==1:
-                    last_exit_code="0"
-                continue # Don't print the exit code line to the user
-            if line.startswith("PY_DIRECTORY__:"):
-                current_dir = line.replace("PY_DIRECTORY__:", "").strip()
-                continue # Don't print the exit code line to the user
-            # Stream the output (stdout and stderr merged) normally
-
-            if "command not found" in line and "line" in line and "/bin/bash" in line:
-                line=""
-            elif "Standard input is not a terminal" in line:
-                subprocess.run(
-                    input_command,
-                    shell=True,
-                    cwd=current_dir
-                )
-                not_terminal_counter=1
-                line=""
-                continue
-            sys.stdout.write(line+"\n")
-            sys.stdout.flush()
-            bashcmd.stdin.write(f"set >{ENV1}\n")
-            bashcmd.stdin.flush()
-            not_terminal_counter=0
-
-
-        # --- ERROR LEVEL LOGIC ---
-        if last_exit_code != "0":
-            handle_error(input_command, last_exit_code)
-            continue
-
+        result = subprocess.run(input_command, shell=True, stderr=subprocess.PIPE)
+        if result.returncode != 0:
+            handle_error(input_command, result.returncode)
     except KeyboardInterrupt:
-        os.killpg(os.getpgid(bashcmd.pid), signal.SIGINT)
         continue
     except Exception as e:
         with USER_ERROR_TEMP.open("w") as f:
-            print(e)
+            f.write(str(e))
+        handle_error(input_command, 1)
         USER_ERROR_TEMP.unlink(missing_ok=True)
