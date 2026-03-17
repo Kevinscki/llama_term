@@ -125,6 +125,10 @@ def handle_error(failed_command, exit_code):
         # Get AI suggestion
         try:
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
             start_time=time.time()
             with LOG_FILE.open("r") as log_file:
                ai_subprocess=subprocess.Popen(
@@ -134,6 +138,14 @@ def handle_error(failed_command, exit_code):
                     stderr=subprocess.DEVNULL,
                     text=True, 
 =======
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
             with TEMP_SCRIPT.open("w") as tempfile:
                 subprocess.run(
                     f"cat {LOG_FILE} | {ollama_path} run {OLLAMA_MODEL} | sed 's/```bash//g; s/```//g' > {TEMP_SCRIPT}",
@@ -374,8 +386,20 @@ while True:
         print ("Goodbye!")
         break
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
    
 =======
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
     elif input_command.startswith("cd"):
             parts = input_command.split(maxsplit=1)
             if len(parts) == 1:
