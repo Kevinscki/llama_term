@@ -1,4 +1,5 @@
 import os
+from dotenv import dotenv_values
 from pathlib import Path
 ESC     = "\033[0m"
 BLUE    = "\033[34m"
@@ -13,6 +14,7 @@ DIM     = "\033[2m"
 GREY    = "\033[90m"
 
 # Configuration
+HOMEDIR=Path("/home/kelvin")
 USERNAME = os.getenv("USER") or os.getenv("USERNAME")
 OLLAMA_MODEL ="bash_model:latest"
 COMPUTERNAME = os.environ.get("COMPUTERNAME", os.uname().nodename if hasattr(os, "uname") else "PC")
@@ -25,7 +27,10 @@ TEMP_ERROR_LOG = BASE_DIR / "error_logs_temp.txt"
 TEMP_SCRIPT = BASE_DIR / "temp_script.sh"
 LOG_LINE=75
 HISTORY_LINES=1  # history size n-lines (larger history not advised)
-SENTINEL = "---CMD_END---"
+SENTINEL = "---CMD_END--"
+ENV1=HISTORY_DIR / ".shellrc"
+ENV2=HOMEDIR / ".bashrc"
+env={**os.environ, **dotenv_values(ENV1)}
 current_dir=Path.cwd()
 simulate_typing=True
 

@@ -5,6 +5,7 @@ import shutil
 import time
 import readline
 import shlex
+import pty
 import sys
 from configuration_variables import *
 from prompt_toolkit.formatted_text import ANSI #the ANSI coloring
@@ -39,7 +40,10 @@ bashcmd = subprocess.Popen(
     bufsize=1,
     preexec_fn=os.setpgrp #isolate signals
     )
-
+bashcmd.stdin.write(f"source {ENV2}\n")
+bashcmd.stdin.flush()
+bashcmd.stdin.write(f"env >{ENV1}\n")
+bashcmd.stdin.flush()
 # Header
 def show_header():
     VARIABLE_NAME="VARIABLE_NAME"
@@ -120,6 +124,7 @@ def handle_error(failed_command, exit_code):
 
         # Get AI suggestion
         try:
+<<<<<<< Updated upstream
             start_time=time.time()
             with LOG_FILE.open("r") as log_file:
                ai_subprocess=subprocess.Popen(
@@ -128,6 +133,15 @@ def handle_error(failed_command, exit_code):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
                     text=True, 
+=======
+            with TEMP_SCRIPT.open("w") as tempfile:
+                subprocess.run(
+                    f"cat {LOG_FILE} | {ollama_path} run {OLLAMA_MODEL} | sed 's/```bash//g; s/```//g' > {TEMP_SCRIPT}",
+                    stderr=subprocess.DEVNULL,
+                    stdout=tempfile,
+                    shell=True,
+                    text=True,
+>>>>>>> Stashed changes
                     bufsize=1,
                     )
             
@@ -135,9 +149,14 @@ def handle_error(failed_command, exit_code):
             #save to file and print
             with open(TEMP_SCRIPT,'w') as temp_file:
                 print("-"*40)
+                risk_counter=0
                 for chunk in ai_subprocess.stdout:
                         cleanline=chunk.replace("```bash","").replace("```","")
-        
+                        keywords=["rm -rf", "rmdir", "sudo", "umount","systemctl","iw"]
+                        if any (kw in cleanline for kw in keywords):
+                            cleanline=f"{RED}{cleanline}{RESET}"
+                            risk_counter+=1
+                            always_execute=False
                         #simulate word printing for sanity
                         for ascii in cleanline:
                             print(ascii, end="", flush=True)
@@ -161,7 +180,10 @@ def handle_error(failed_command, exit_code):
             return
 
         # Display AI suggestion
-        print(CYAN + "Suggested code (took "+ f"{elapsed:.6f}" + " seconds to generate):"+ RESET)
+        if not risk_counter==0:
+            print(CYAN + "Suggested code (took "+ f"{elapsed:.6f}" + " seconds to generate), "+RED+"and with "+str(risk_counter)+" RISKS factors."+ RESET)    
+        else:
+            print(CYAN + "Suggested code (took "+ f"{elapsed:.6f}" + " seconds to generate):"+ RESET)
 
         # Ask user if they want to execute
         execute_now=False
@@ -242,13 +264,14 @@ def handle_error(failed_command, exit_code):
             TEMP_SCRIPT.unlink(missing_ok=True)
             TEMP_ERROR_LOG.unlink(missing_ok=True)
     except KeyboardInterrupt:
-        print("You pressed 'ctrl +c', that stops stuff")
+        print(GREY +"You pressed 'ctrl +c', that stops stuff"+RESET)
 def handle_broken_pipe():
     global bashcmd
     bashcmd = subprocess.Popen(
     ["/bin/bash"],
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
+    env=env,
     stderr=subprocess.STDOUT,
     cwd=current_dir,
     text=True,
@@ -350,7 +373,28 @@ while True:
     if cmd_lower in ("exit", "quit"):
         print ("Goodbye!")
         break
+<<<<<<< Updated upstream
    
+=======
+    elif input_command.startswith("cd"):
+            parts = input_command.split(maxsplit=1)
+            if len(parts) == 1:
+                target = Path.home()
+            else:
+                target = Path(parts[1]).expanduser()
+
+            if target.exists() and target.is_dir():
+                try:
+                    last_dir = Path.cwd()
+                    os.chdir(target)
+                    current_dir=last_dir
+                except PermissionError:
+                    print("Permission denied.")
+            else:
+                print(f"No such directory: {target}")
+            continue
+            
+>>>>>>> Stashed changes
     elif cmd_lower == "clear"or cmd_lower == "cls":
         os.system("cls" if os.name == "nt" else "clear")
         continue
@@ -406,6 +450,8 @@ while True:
                 continue
             sys.stdout.write(line+"\n")
             sys.stdout.flush()
+            bashcmd.stdin.write(f"set >{ENV1}\n")
+            bashcmd.stdin.flush()
             not_terminal_counter=0
 
 

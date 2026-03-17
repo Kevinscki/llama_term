@@ -1,0 +1,23 @@
+Server:		9.9.9.9
+Address:	9.9.9.9#53
+
+Non-authoritative answer:
+Name:	example.com
+Address: 23.220.75.232
+Name:	example.com
+Address: 23.220.75.245
+Name:	example.com
+Address: 23.192.228.80
+Name:	example.com
+Address: 23.192.228.84
+Name:	example.com
+Address: 23.215.0.136
+Name:	example.com
+Address: 23.215.0.138
+example.com	rdata_46 = A 13 2 300 20251125084421 20251104105312 12041 example.com. W0GLwwIz+vvC/tgK0k7ac3HuImgucGH+MbboSJaUEjrZeZqDYT9LEubK 60BQuNaxp51l6xavto9zhpMQ7vvROg==
+example.com	nameserver = a.iana-servers.net.
+example.com	nameserver = b.iana-servers.net.
+example.com	rdata_46 = NS 13 2 86400 20251205202242 20251114153926 9776 example.com. VIWlbGSIy8Dbw22xMPieXEABOk4CBtTAhTq8TiYVzNHiGBQnjSzjBFlj z4H4Kvya6uh//xyxKDeQRSGbsHhi5g==
+
+Authoritative answers can be found from:
+
