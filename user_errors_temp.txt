@@ -1,1 +1,0 @@
-[Errno 2] No such file or directory: "cat /home/kelvin/projects/ai/llama_term/history/log_bash.txt | /snap/bin/ollama run qwen2.5-coder:3b | sed 's/```bash//g; s/```//g' > /home/kelvin/projects/ai/llama_term/temp_script.sh"

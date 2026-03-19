@@ -135,7 +135,7 @@ def handle_error(failed_command, exit_code):
                     bufsize=1,
                     )
             
-            
+             
             #save to file and print
             with open(TEMP_SCRIPT,'w') as temp_file:
                 print("-"*40)
