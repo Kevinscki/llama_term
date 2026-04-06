@@ -20,8 +20,8 @@ OLLAMA_MODEL ="bash_model:latest"
 COMPUTERNAME = os.environ.get("COMPUTERNAME", os.uname().nodename if hasattr(os, "uname") else "PC")
 #BASE_DIR = Path.home() / "projects" / "ai" / "llama_term"
 BASE_DIR = Path(__file__).resolve().parent
-HISTORY_DIR = BASE_DIR / "history"
-LOG_FILE = HISTORY_DIR / "log_bash.txt"
+HISTORY_DIR = BASE_DIR / "markdowns"
+LOG_FILE = HISTORY_DIR / "BASH.md"
 USER_ERROR_TEMP = BASE_DIR / "user_errors_temp.txt"
 TEMP_ERROR_LOG = BASE_DIR / "error_logs_temp.txt"
 TEMP_SCRIPT = BASE_DIR / "temp_script.sh"
@@ -33,7 +33,7 @@ ENV2=HOMEDIR / ".bashrc"
 env={**os.environ, **dotenv_values(ENV1)}
 current_dir=Path.cwd()
 simulate_typing=True
-
+keywords=["rm -rf", "rmdir", "sudo", "umount","systemctl","iw"]  # Dangerous keywords list
 
 # Ensure directories exist
 BASE_DIR.mkdir(parents=True, exist_ok=True)

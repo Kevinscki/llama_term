@@ -4,7 +4,7 @@ from pathlib import Path
 import shutil
 import time
 import readline
-import shlex
+import re
 import pty
 import sys
 from configuration_variables import *
@@ -124,7 +124,6 @@ def handle_error(failed_command, exit_code):
 
         # Get AI suggestion
         try:
-<<<<<<< Updated upstream
             start_time=time.time()
             with LOG_FILE.open("r") as log_file:
                ai_subprocess=subprocess.Popen(
@@ -133,15 +132,6 @@ def handle_error(failed_command, exit_code):
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
                     text=True, 
-=======
-            with TEMP_SCRIPT.open("w") as tempfile:
-                subprocess.run(
-                    f"cat {LOG_FILE} | {ollama_path} run {OLLAMA_MODEL} | sed 's/```bash//g; s/```//g' > {TEMP_SCRIPT}",
-                    stderr=subprocess.DEVNULL,
-                    stdout=tempfile,
-                    shell=True,
-                    text=True,
->>>>>>> Stashed changes
                     bufsize=1,
                     )
             
@@ -152,17 +142,18 @@ def handle_error(failed_command, exit_code):
                 risk_counter=0
                 for chunk in ai_subprocess.stdout:
                         cleanline=chunk.replace("```bash","").replace("```","")
-                        keywords=["rm -rf", "rmdir", "sudo", "umount","systemctl","iw"]
-                        if any (kw in cleanline for kw in keywords):
+
+                        if any (re.search(rf"\b{re.escape(kw)}\b", cleanline) for kw in keywords):
                             cleanline=f"{RED}{cleanline}{RESET}"
                             risk_counter+=1
                             always_execute=False
                         #simulate word printing for sanity
+
                         for ascii in cleanline:
                             print(ascii, end="", flush=True)
                             if simulate_typing:
                                 time.sleep(0.004)
-                        temp_file.write(cleanline)
+                        temp_file.write(cleanline.replace(f"{RED}",""))
                         temp_file.flush()
                 print("-"*40)
             ai_subprocess.wait()
@@ -278,6 +269,10 @@ def handle_broken_pipe():
     bufsize=1,
     preexec_fn=os.setpgrp #isolate signals
     )
+def include_file():
+    print("placeholder")
+def handle_bashline(line):
+    print("placeholder")
 def show_help():
 
     print()
@@ -326,7 +321,7 @@ while True:
         continue
     try:
         while True:
-            if cmd_line.endswith("\\") and (len(cmd_line)-len(cmd_line.rstrip("\\")))%2==1:
+            if (cmd_line.endswith("\\") and (len(cmd_line)-len(cmd_line.rstrip("\\")))%2==1):
                 # remove trailing backslash and continue
                 cmd_lines.append(cmd_line[:-1])
                 cmd_line=str(input(f"{DIM}... {RESET}"))
@@ -373,33 +368,12 @@ while True:
     if cmd_lower in ("exit", "quit"):
         print ("Goodbye!")
         break
-<<<<<<< Updated upstream
    
-=======
-    elif input_command.startswith("cd"):
-            parts = input_command.split(maxsplit=1)
-            if len(parts) == 1:
-                target = Path.home()
-            else:
-                target = Path(parts[1]).expanduser()
-
-            if target.exists() and target.is_dir():
-                try:
-                    last_dir = Path.cwd()
-                    os.chdir(target)
-                    current_dir=last_dir
-                except PermissionError:
-                    print("Permission denied.")
-            else:
-                print(f"No such directory: {target}")
-            continue
-            
->>>>>>> Stashed changes
     elif cmd_lower == "clear"or cmd_lower == "cls":
         os.system("cls" if os.name == "nt" else "clear")
         continue
     elif cmd_lower.startswith("sudo"):#to fix and alias
-        print("Please dont sudo 😭😭😭..")#will improve.. 
+        print("Please don't sudo 😭😭😭..")#will improve.. 
         continue
     elif cmd_lower == "help" or cmd_lower =="help()":
         show_help()
