@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chatroom</title>
+</head>
+<body>
+    <h1>Realtime Chatroom</h1>
+    <form action="/chat" method="post">
+        <input type="text" name="message" placeholder="Type a message...">
+        <button type="submit">Send</button>
+    </form>
+    <!-- Dummy chat messages -->
+    <ul id="messages"></ul>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        .ready(function() {
+            .on('submit', function(e) {
+                e.preventDefault();
+                var message = .val();
+                $.post('/chat', { message: message }, function(response) {
+                    .append('<li>' + response.message + '</li>');
+                    .val('');
+                });
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+from flask import Flask, render_template, request\napp = Flask(__name__)\n@app.route('/', methods=['GET', 'POST'])\ndef chat():\n    if request.method == 'POST':\n        message = request.form['message']\n        return f'Message: {message}'\n    return render_template('chat.html')\nif __name__ == '__main__':\n    app.run(debug=True)
