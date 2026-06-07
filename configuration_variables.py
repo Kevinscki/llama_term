@@ -18,7 +18,7 @@ API_TYPE="ollama_http"
 GEMINI_MODEL="gemini-2.5-flash"
 GEMINI_API="AIzaSyDRkcih2PvNykPcKqMBRawzG0VfaZwpGeE"
 OLLAMA_MODEL ="qwen2.5-coder:7b"
-
+OLLAMA_URL=""
 
 
 

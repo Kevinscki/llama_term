@@ -1,1 +1,0 @@
-<html><head><meta name='referrer' content='origin'></head><body><script language='JavaScript'>window.parent.location.replace("https://claude.com/product/claude-code");</script><noscript><META http-equiv='refresh' content="0;URL=https://claude.com/product/claude-code"></noscript></body></html>
