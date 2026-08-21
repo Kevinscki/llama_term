@@ -135,6 +135,44 @@ SENSITIVE_PATH_MARKERS = (
 # Pasted / typed shell input larger than this is fed via a temp script so the
 # persistent bash stdin PIPE (~64KiB) cannot fill and deadlock against stdout.
 LARGE_STDIN_BYTES = 48_000
+
+# Real-TTY trick — the persistent shell is PIPE-based (so state survives), but
+# commands that need a true terminal are wrapped in script(1) at execution
+# time: they get a fresh PTY *inside* the persistent bash, so colors,
+# editors, pagers and REPLs work while cwd/env/functions still persist.
+#   auto   = wrap only known TTY-hungry commands (default)
+#   always = wrap every typed command (max fidelity, raw CRLF output)
+#   off    = never wrap (legacy pipe behavior)
+REALTTY_MODE = os.getenv("LLAMA_REALTTY", "auto").strip().lower()
+
+TTY_COMMANDS = {
+    # shells / multiplexers
+    "bash", "sh", "zsh", "fish", "dash", "ksh", "csh", "tcsh", "nu",
+    "screen", "tmux", "abduco", "dvtm",
+    # editors
+    "vim", "vi", "view", "vimdiff", "nvim", "nano", "micro", "helix", "hx",
+    "emacs", "emacsclient", "pico", "joe", "ne",
+    # pagers / docs
+    "less", "more", "most", "man", "info", "pinfo",
+    # monitors / system TUIs
+    "watch", "top", "btop", "htop", "gtop", "atop", "iotop", "nmon",
+    "powertop", "iftop", "nload", "bandwhich", "s-tui",
+    # file managers
+    "ncdu", "mc", "ranger", "lf", "yazi", "nnn", "vifm",
+    # remote
+    "ssh", "mosh", "telnet", "sftp", "ftp",
+    # git/ops TUIs
+    "fzf", "lazygit", "lazydocker", "tig", "gitui", "k9s",
+    # REPLs
+    "python", "python3", "ipython", "ipython3", "ptpython", "bpython",
+    "node", "deno", "bun", "ruby", "irb", "pry", "julia", "lua", "php", "R",
+    # databases (interactive clients)
+    "psql", "mysql", "mariadb", "sqlite3", "mongosh", "mongo", "redis-cli",
+    "clickhouse-client",
+    # misc interactive
+    "gpg", "pass", "crontab", "sudo", "su", "doas", "journalctl",
+}
+
 PTY_READ_BYTES = 65_536
 OLLAMA_TIMEOUT = (5, 300)  # connect, read
 

@@ -8,6 +8,8 @@ import re
 import sys
 import shlex
 import json
+import base64
+import threading
 from datetime import datetime
 from rich.console import Console
 import termios
@@ -339,6 +341,21 @@ def show_help():
     print(f"  {DIM}{STEAM}Lines flagged as risky are highlighted in"
           f" {CINNAMON}amber{RESET}{DIM}{STEAM} and force a prompt.{RESET}")
 
+    section("Confirming AI Scripts")
+    entry("y",              "Run the suggestion")
+    entry("n",              "Skip it")
+    entry("a",              "Auto-run non-risky suggestions for this session")
+    entry("c",              "Copy the suggested script to the clipboard")
+    entry("v",              "View the exact script before deciding")
+    entry("t",              "Run captured; attach STDOUT + STDERR to AI context")
+    entry("1-9",            "With multiple blocks: run just that block")
+    print(f"  {DIM}{STEAM}Risky lines always force an explicit y — 'a' can never bypass them.{RESET}")
+
+    section("Real TTY Mode")
+    print(f"  {DIM}{STEAM}Editors, pagers and REPLs are wrapped in script(1) so they{RESET}")
+    print(f"  {DIM}{STEAM}get a fresh PTY *inside* the persistent shell — cd/env state{RESET}")
+    print(f"  {DIM}{STEAM}still persists across commands. LLAMA_REALTTY=auto|always|off.{RESET}")
+
     section("Logging")
     print(f"  {DIM}{STEAM}Approved AI scripts append to {LATTE}{LOG_FILE}{RESET}")
     print(f"  {DIM}{STEAM}Do not put secrets in included files sent to cloud providers.{RESET}")
@@ -462,6 +479,92 @@ def run_ai_script_pty(script_path: Path):
 
 
 LIVE_CONTEXT_MARKER = "# === LIVE HOST / TOOL CONTEXT"
+
+# ── AI-script action helpers ────────────────────────────────────────────────
+
+def copy_to_clipboard(text: str) -> str:
+    """Copy text to the system clipboard; returns the method used.
+
+    Tries native tools first, falls back to OSC 52 (works over SSH on
+    modern terminals: kitty, alacritty, wezterm, tmux w/ set-clipboard).
+    """
+    for cmd in (["wl-copy"], ["xclip", "-selection", "clipboard"],
+                ["xsel", "--clipboard", "--input"], ["pbcopy"]):
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.run(cmd, input=text, text=True, check=True, timeout=5)
+                return cmd[0]
+            except Exception:
+                continue
+    b64 = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    sys.stdout.write(f"\033]52;c;{b64}\a")
+    sys.stdout.flush()
+    return "osc52"
+
+
+def _write_temp_script(blocks: list[str]) -> None:
+    """Write selected bash blocks + session trailers to TEMP_SCRIPT."""
+    with open(TEMP_SCRIPT, "w") as tmp:
+        tmp.write("\n".join(blocks))
+        tmp.write(f'\necho -e "\\n{MARKER_AI_PWD}$(pwd)"')
+        tmp.write(f'\necho -e "\\n{MARKER_AI_END}"\n')
+
+
+def run_ai_script_captured(script_path: Path, max_capture: int = 24_000):
+    """Run an approved script capturing stdout/stderr separately.
+
+    Streams stdout live to the screen while a background thread drains
+    stderr (no pipe deadlock). Returns (rc, stdout_text, stderr_text).
+    Control-marker lines are filtered and still drive cwd tracking.
+    """
+    global current_dir
+    proc = subprocess.Popen(
+        ["/bin/bash", str(script_path)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        errors="replace",
+        cwd=current_dir,
+        env=env,
+    )
+    err_buf: list[str] = []
+    t = threading.Thread(
+        target=lambda: err_buf.extend(iter(proc.stderr.readline, "")),
+        daemon=True,
+    )
+    t.start()
+
+    out_parts: list[str] = []
+    for line in proc.stdout:
+        raw = line.rstrip("\n")
+        if raw.startswith(MARKER_AI_PWD):
+            new_dir = raw[len(MARKER_AI_PWD):].strip()
+            if new_dir:
+                current_dir = new_dir
+                try:
+                    os.chdir(current_dir)
+                except OSError:
+                    pass
+            continue
+        if raw.startswith(MARKER_AI_END) or raw.strip() == MARKER_AI_END:
+            continue
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        out_parts.append(line)
+
+    rc = proc.wait()
+    t.join(timeout=2)
+
+    def _cap(parts: list[str]) -> str:
+        s = "".join(parts).rstrip("\n")
+        if len(s) > max_capture:
+            s = s[:max_capture] + "\n…[truncated]"
+        return s
+
+    return rc, _cap(out_parts), _cap(err_buf)
+
+
 
 #AI invoke — used on command failure and ASK()
 def _messages_for_ai():
@@ -607,10 +710,7 @@ def invoke_ai(user_text: str, *, refresh: bool | None = None):
         elapsed = time.time() - start_time
         bash_blocks = extract_bash_blocks(full_response)
 
-        with open(TEMP_SCRIPT, "w") as tmp:
-            tmp.write("\n".join(bash_blocks))
-            tmp.write(f'\necho -e "\\n{MARKER_AI_PWD}$(pwd)"')
-            tmp.write(f'\necho -e "\\n{MARKER_AI_END}"\n')
+        _write_temp_script(bash_blocks)
 
         history.append({"role": "assistant", "content": full_response})
     except KeyboardInterrupt:
@@ -637,39 +737,93 @@ def invoke_ai(user_text: str, *, refresh: bool | None = None):
         print(f"\n{LATTE}Suggestion ready  ({elapsed:.3f}s){RESET}")
 
     execute_now = False
+    capture_run = False
+    n_blocks = len(bash_blocks)
+
     # High-risk always requires an explicit confirm (FIX.md)
     force_confirm = risk_counter >= 1
+
+    if n_blocks > 1:
+        print(f"{DIM}{STEAM}{n_blocks} bash blocks — pick one by number:{RESET}")
+        for i, b in enumerate(bash_blocks, 1):
+            first = next((ln.strip() for ln in b.splitlines() if ln.strip()), "")
+            print(f"  {CREAM}[{i}]{RESET} {DIM}{STEAM}{first[:72]}{RESET}")
+
+    def _menu_hint() -> str:
+        opts = "[y] run  [n] no"
+        if not force_confirm:
+            opts += "  [a] always (session, non-risky)"
+        opts += "  [c] copy  [v] view  [t] run+capture → context"
+        if n_blocks > 1:
+            opts += f"  [1-{n_blocks}] one block"
+        return opts
 
     if always_execute and not force_confirm and ALLOW_SESSION_AUTORUN:
         execute_now = True
         print(f"{DIM}{STEAM}Auto-run (session): executing without prompt.{RESET}")
     else:
         print()
-        try:
-            if force_confirm:
+        while True:
+            try:
+                tag = f"{CINNAMON}HIGH-RISK {RESET}" if force_confirm else ""
                 choice = input(
-                    f"  {CINNAMON}HIGH-RISK{RESET} {CREAM}Run it?  "
-                    f"{DIM}[y] yes  [n] no{RESET}  › "
-                ).lower()
-            else:
-                choice = input(
-                    f"  {CREAM}Run it?  {DIM}[y] yes  [n] no  [a] always (session, non-risky){RESET}  › "
-                ).lower()
-        except KeyboardInterrupt:
-            print(f"\n{DIM}{STEAM}Cancelled.{RESET}")
-            TEMP_SCRIPT.unlink(missing_ok=True)
-            return
-        print()
-        if choice == "a" and not force_confirm and ALLOW_SESSION_AUTORUN:
-            always_execute = True
-            execute_now = True
-            print(f"{CINNAMON}Session auto-run ON for non-risky suggestions. Risky lines still prompt.{RESET}")
-        elif choice == "y":
-            execute_now = True
+                    f"  {tag}{CREAM}Action?{RESET} {DIM}{_menu_hint()}{RESET}  › "
+                ).strip().lower()
+                print()
+            except KeyboardInterrupt:
+                print(f"\n{DIM}{STEAM}Cancelled.{RESET}")
+                TEMP_SCRIPT.unlink(missing_ok=True)
+                return
+
+            if choice == "v":
+                script_txt = TEMP_SCRIPT.read_text(errors="replace").rstrip()
+                for ln in script_txt.splitlines():
+                    sys.stdout.write(f"  {STEAM}{DIM}| {ln}{RESET}\n")
+                sys.stdout.flush()
+                continue
+            if choice == "c":
+                method = copy_to_clipboard("\n".join(bash_blocks))
+                print(f"{LATTE}[+] Script copied to clipboard ({method}, "
+                      f"{len(chr(10).join(bash_blocks))} chars){RESET}")
+                continue
+            if choice == "t":
+                execute_now = True
+                capture_run = True
+                break
+            if choice.isdigit() and 1 <= int(choice) <= n_blocks:
+                _write_temp_script([bash_blocks[int(choice) - 1]])
+                execute_now = True
+                break
+            if choice == "a":
+                if force_confirm or not ALLOW_SESSION_AUTORUN:
+                    print(f"{CINNAMON}'a' can never bypass risky lines.{RESET}")
+                    continue
+                always_execute = True
+                execute_now = True
+                print(f"{CINNAMON}Session auto-run ON for non-risky suggestions. Risky lines still prompt.{RESET}")
+                break
+            if choice in ("y", "n"):
+                execute_now = (choice == "y")
+                break
+            print(f"{STEAM}{DIM}Choose: {_menu_hint()}{RESET}")
 
     if execute_now:
         try:
-            rc = run_ai_script_pty(TEMP_SCRIPT)
+            if capture_run:
+                rc, out_txt, err_txt = run_ai_script_captured(TEMP_SCRIPT)
+                stamp = datetime.now().isoformat(timespec="seconds")
+                history.append({"role": "user",
+                                "content": f"[STDOUT {stamp}]\n{out_txt or '(empty)'}"})
+                history.append({"role": "user",
+                                "content": f"[STDERR {stamp}]\n{err_txt or '(empty)'}"})
+                _trim_history()
+                if err_txt:
+                    for ln in err_txt.splitlines():
+                        sys.stdout.write(f"{RED}! {ln}{RESET}\n")
+                    sys.stdout.flush()
+                print(f"{DIM}{STEAM}[+] STDOUT + STDERR attached as separate AI context messages.{RESET}")
+            else:
+                rc = run_ai_script_pty(TEMP_SCRIPT)
             try:
                 with LOG_FILE.open("a") as f:
                     f.write(f"\n# AI script {datetime.now().isoformat()} rc={rc}\n")
@@ -678,7 +832,7 @@ def invoke_ai(user_text: str, *, refresh: bool | None = None):
                 pass
         except Exception as e:
             print(f"{RED}[ERROR] Script execution failed: {e}{RESET}")
-    else:
+    elif choice != "c":
         print(f"{STEAM}{DIM}Suggestion skipped.{RESET}")
 
     TEMP_SCRIPT.unlink(missing_ok=True)
@@ -732,6 +886,34 @@ def _feed_bash_command(cmd_line: str) -> None:
     else:
         bashcmd.stdin.write(body)
     bashcmd.stdin.flush()
+
+
+# Real-TTY trick: detect TTY-hungry commands and wrap them in script(1) so
+# they get a fresh PTY *inside* the persistent bash (state persists, TTY works).
+def _needs_real_tty(cmd_line: str) -> bool:
+    if REALTTY_MODE == "always":
+        return bool(shutil.which("script"))
+    if REALTTY_MODE != "auto" or not shutil.which("script"):
+        return False
+    for seg in re.split(r"&&|\|\||;|\||\n", cmd_line):
+        words = seg.strip().split()
+        while words and re.match(r"^[A-Za-z_]\w*=", words[0]):
+            words.pop(0)  # skip env assignments like FOO=bar cmd
+        if words and words[0].rsplit("/", 1)[-1] in TTY_COMMANDS:
+            return True
+    return False
+
+
+def _tty_wrap(cmd_line: str) -> str:
+    """Wrap a command so script(1) runs it in a new PTY inside persistent bash.
+
+    -q quiet  -f flush  -e propagate child exit code.
+    COLUMNS/LINES are exported so TUI apps size correctly even though the
+    outer session is pipe-based.
+    """
+    cols, rows = shutil.get_terminal_size((120, 36))
+    inner = f"export COLUMNS={cols} LINES={rows}\n{cmd_line}"
+    return f"script -qfec {shlex.quote(inner)} /dev/null"
 
 
 def lord_bash(cmd_line, file_contents=None, from_includes=False): #The bash runner
@@ -870,9 +1052,12 @@ def lord_bash(cmd_line, file_contents=None, from_includes=False): #The bash runn
     except (KeyboardInterrupt, EOFError):
         return True
 
-    #run it (large pastes use a temp script — see _feed_bash_command)
+    #run it (large pastes use a temp script — see _feed_bash_command;
+    #TTY-hungry commands get a PTY via script(1) — see _tty_wrap)
     try:
-        _feed_bash_command(cmd_line)
+        _feed_bash_command(
+            _tty_wrap(cmd_line) if _needs_real_tty(cmd_line) else cmd_line
+        )
     except BrokenPipeError:
         handle_broken_pipe()
         handle_error(input_command, last_exit_code)
