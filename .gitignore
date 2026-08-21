@@ -1,0 +1,44 @@
+# Local / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env/
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime / generated
+.runtime/
+_paste_cmd.sh
+temp_script.sh
+user_errors_temp.txt
+error_logs_temp.txt
+*.swp
+*.swo
+*.kate-swp
+*~
+.DS_Store
+
+# Project local noise
+ai_reports/
+backups/
+markdowns/.shellrc
+markdowns/BASH_LEGACY.md
+*.log
+*.bak
+Archive.zip
