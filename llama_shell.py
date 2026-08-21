@@ -56,7 +56,7 @@ class Kompleter(Completer):
         if not text_to_parse:
             for command in ["cat", "cd", "ls", "nano", "rm", "vim", "whoami",
                             "id", "clear", "systemctl", "source", "open",
-                            "bash", "ASK()", "FLAGS()", "INCLUDE()", "CLEAR()", "BUMP()", "LOAD()",
+                            "bash", "ASK()", "FLAGS()", "INCLUDE()", "CLEAR()", "BUMP()", "LOAD()", "ESC()",
                             "TOOL()", "ADD_TOOL()", "BANNER()", "RESET()", "HELP"]:
                 yield Completion(command, start_position=0)
             return
@@ -81,7 +81,7 @@ class Kompleter(Completer):
         if is_first_token:
             for command in ["cat", "cd", "ls", "nano", "rm", "vim", "whoami",
                             "id", "clear", "systemctl", "source", "open",
-                            "bash", "ASK()", "FLAGS()", "INCLUDE()", "CLEAR()", "BUMP()", "LOAD()",
+                            "bash", "ASK()", "FLAGS()", "INCLUDE()", "CLEAR()", "BUMP()", "LOAD()", "ESC()",
                             "TOOL()", "ADD_TOOL()", "BANNER()", "RESET()", "HELP"]:
                 if command.startswith(token):
                     yield Completion(command, start_position=-len(token))
@@ -323,6 +323,7 @@ def show_help():
     entry("exit / quit",    "Close llama_term")
 
     section("AI Controls")
+    entry("ESC()",         "Instantly stop any waiting loop; shows the pending sentence")
     entry("ASK() …",        "Ask the model — generates bash from live host/tool context")
     entry("FLAGS()",        "Show context markers (repeat / embed / exitcode)")
     entry("FLAGS() …",      "FLAGS() repeat|embed|exitcode on|off  or  FLAGS() all on|off")
@@ -775,6 +776,11 @@ def invoke_ai(user_text: str, *, refresh: bool | None = None):
                 TEMP_SCRIPT.unlink(missing_ok=True)
                 return
 
+            if _is_escape(choice):
+                _print_do_sentence("\n".join(bash_blocks))
+                TEMP_SCRIPT.unlink(missing_ok=True)
+                TEMP_ERROR_LOG.unlink(missing_ok=True)
+                return
             if choice == "v":
                 script_txt = TEMP_SCRIPT.read_text(errors="replace").rstrip()
                 for ln in script_txt.splitlines():
@@ -946,10 +952,30 @@ def _run_editor_directly(cmd_line: str) -> bool:
     return True
 
 
+# ── ESC() — instant escape hatch from any waiting loop ─────────────────────
+
+def _is_escape(text: str) -> bool:
+    """True when the user typed ESC() (any case) on its own line."""
+    return text.strip().upper() == "ESC()"
+
+
+def _print_do_sentence(sentence: str) -> None:
+    """Show the pending 'do sentence' so nothing typed is lost."""
+    print(f"{CINNAMON}⏹  Escaped.{RESET} {DIM}{STEAM}Pending sentence (not run):{RESET}")
+    for ln in sentence.splitlines() or [""]:
+        sys.stdout.write(f"  {STEAM}{DIM}| {ln}{RESET}\n")
+    sys.stdout.flush()
+
+
 def lord_bash(cmd_line, file_contents=None, from_includes=False): #The bash runner
     global last_exit_code, current_dir, history
     last_exit_code=0
     not_terminal_counter = 0
+
+    #typed at the main prompt there is nothing to escape out of
+    if _is_escape(cmd_line):
+        print(f"{DIM}{STEAM}Nothing to escape — you are at the prompt.{RESET}")
+        return True
 
     try:
         os.chdir(current_dir)
@@ -1073,10 +1099,18 @@ def lord_bash(cmd_line, file_contents=None, from_includes=False): #The bash runn
 
             cont = False
             if "unexpected" in stderr and any(t in stderr for t in ("end of file", "EOF", "token")):
-                cmd_line += "\n" + input(f"{DIM}> {RESET}")
+                nxt = input(f"{DIM}> {RESET}")
+                if _is_escape(nxt):
+                    _print_do_sentence(cmd_line)
+                    return True
+                cmd_line += "\n" + nxt
                 cont = True
             if cmd_line.endswith("\\") and (len(cmd_line) - len(cmd_line.rstrip("\\"))) % 2 == 1:
-                cmd_line += input(f"{DIM}> {RESET}")
+                nxt = input(f"{DIM}> {RESET}")
+                if _is_escape(nxt):
+                    _print_do_sentence(cmd_line)
+                    return True
+                cmd_line += nxt
                 cont = True
             if not cont:
                 cmd_lines.append(cmd_line)
@@ -1258,6 +1292,10 @@ def include_file(files):
         except KeyboardInterrupt:
             continue
         if cmd.lower() == "exit":
+            break
+        if _is_escape(cmd):
+            print(f"{CINNAMON}⏹  Escaped INCLUDE() session.{RESET} "
+                  f"{DIM}{STEAM}Attached: {label}{RESET}")
             break
         if not cmd:
             continue
