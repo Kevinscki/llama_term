@@ -916,6 +916,36 @@ def _tty_wrap(cmd_line: str) -> str:
     return f"script -qfec {shlex.quote(inner)} /dev/null"
 
 
+# Editors get the REAL terminal directly (subprocess.run inherits stdio), so
+# keybindings like nano's ^X / vim's :q work natively instead of being relayed
+# through the pipe -> script(1) chain, which does not forward keystrokes.
+DIRECT_EDITORS = {"nano", "pico", "vim", "vi", "nvim", "view", "micro", "hx"}
+
+
+def _run_editor_directly(cmd_line: str) -> bool:
+    """Run a known editor on the real TTY. Returns True if handled."""
+    # anything with shell operators / expansions goes down the normal
+    # (wrapped) path, where bash parses it with full semantics
+    if re.search(r"[|&;<>()`$\n]", cmd_line):
+        return False
+    try:
+        parts = shlex.split(cmd_line)
+    except ValueError:
+        return False
+    while parts and re.match(r"^[A-Za-z_]\w*=", parts[0]):
+        parts.pop(0)  # skip env assignments like FOO=bar vim x
+    if not parts or parts[0].rsplit("/", 1)[-1] not in DIRECT_EDITORS:
+        return False
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False  # headless/piped: fall back to the wrapped path
+    try:
+        # shell=True keeps $VAR expansion / ~ expansion identical to bash
+        subprocess.run(cmd_line, shell=True, cwd=current_dir, env=env)
+    except KeyboardInterrupt:
+        pass
+    return True
+
+
 def lord_bash(cmd_line, file_contents=None, from_includes=False): #The bash runner
     global last_exit_code, current_dir, history
     last_exit_code=0
@@ -1014,6 +1044,10 @@ def lord_bash(cmd_line, file_contents=None, from_includes=False): #The bash runn
             return True
     if cmd_line.startswith("yes"):
         print(f"{STEAM}{DIM}Tip: 'yes' pipes infinite 'y' — pipe to your command instead.{RESET}")
+        return True
+
+    #editors run natively on the real TTY (nano ^X / vim :q must just work)
+    if _run_editor_directly(cmd_line):
         return True
 
     if cmd_lower in ("help", "help()"):
