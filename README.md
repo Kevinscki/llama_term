@@ -50,6 +50,16 @@ that was previously stored in source.
 | `BUMP()` | Clear chat turns; keep tool + live embeds |
 | `LOAD()` | Warm the model |
 | `y` / `n` / `a` | Confirm AI script — `a` = session auto-run for **non-risky** only |
+| `c` / `v` / `t` | Copy script to clipboard · view it · run captured and attach STDOUT/STDERR to context |
+| `1-9` | Multiple blocks: run just that block |
+
+## Real TTY mode
+
+The persistent shell is pipe-based so state survives every command, but
+TTY-hungry programs (vim, less, htop, ssh, python REPL, …) are wrapped in
+`script(1)` at run time — each gets a fresh PTY *inside* the persistent bash,
+so colors and full-screen UIs work while `cd`, env vars and functions still
+persist. Set `LLAMA_REALTTY=auto|always|off` (default `auto`).
 
 ## Safety model
 
@@ -60,6 +70,7 @@ that was previously stored in source.
 
 ## Known limitations
 
-- The typed-command path uses pipes, not a full TTY (editors / password prompts are limited).
+- TTY wrapping is per-command (`script(1)`); a wrapped command's output is
+  relayed line-by-line, so exotic full-screen redraws can look slightly off.
 - AI suggestions can be wrong — always review before `y`.
 - See `FIX.md` for the repair backlog and remaining P2 work.
