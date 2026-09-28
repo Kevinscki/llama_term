@@ -1,5 +1,7 @@
-prompt-toolkit
 rich
+prompt_toolkit
 requests
+google-genai
 python-dotenv
-google-generativeai
+defusedxml
+lxml
