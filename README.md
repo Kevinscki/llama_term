@@ -81,4 +81,4 @@ persist. Set `LLAMA_REALTTY=auto|always|off` (default `auto`).
 
 ## Screenshot
 
-![Screenshot](screenshot.png)
+
