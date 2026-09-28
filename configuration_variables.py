@@ -20,13 +20,39 @@ CURRENT_TOOL_NAME_FILE = CURRENT_TOOL_NAME+".md"
 # Load local .env if present (never commit secrets)
 load_dotenv(BASE_DIR / ".env", override=False)
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
 #stuff
+# API_TYPE: openai_http | anthropic_http | gemini
 API_TYPE = os.getenv("API_TYPE", "ollama_http")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 # Prefer environment / .env — never hardcode live keys in source
 GEMINI_API = os.getenv("GEMINI_API", "") or os.getenv("GOOGLE_API_KEY", "")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:31b-cloud")
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
+
+# OpenAI-compatible (Ollama / Omniroute / LiteLLM / OpenAI, etc.)
+OPENAI_MODEL = os.getenv("OPENAI_MODEL","gemma4:31b-cloud")
+OPENAI_URL_ENDPOINT = (
+    os.getenv("OPENAI_URL_ENDPOINT")
+    or os.getenv("OPEAI_URL_ENDPOINT")  # common typo alias
+    or os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/v1/chat/completions")
+)
+OPENAI_API = _env_bool("OPENAI_API", False)  # send Authorization when True
+OPENAI_URL_API = os.getenv("OPENAI_URL_API")
+
+# Anthropic Messages API (native or Anthropic-compatible proxy)
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+ANTHROPIC_URL_ENDPOINT = os.getenv(
+    "ANTHROPIC_URL_ENDPOINT", "https://api.anthropic.com/v1/messages"
+)
+ANTHROPIC_API = _env_bool("ANTHROPIC_API", True)
+ANTHROPIC_URL_API = os.getenv("ANTHROPIC_URL_API", "")
+ANTHROPIC_VERSION = os.getenv("ANTHROPIC_VERSION", "2023-06-01")
+ANTHROPIC_MAX_TOKENS = int(os.getenv("ANTHROPIC_MAX_TOKENS", "4096"))
 
 
 HOMEDIR=Path(os.path.expanduser("~"))
@@ -45,6 +71,8 @@ TEMP_ERROR_LOG = BASE_DIR / "error_logs_temp.txt"
 RUNTIME_DIR = Path(tempfile.mkdtemp(prefix="llama_term_"))
 TEMP_SCRIPT = RUNTIME_DIR / "temp_script.sh"
 PASTE_CMD_FILE = RUNTIME_DIR / "paste_cmd.sh"
+# [t] capture: PTY transcript round-trips through this tmp file (write → read back)
+CAPTURE_FILE = RUNTIME_DIR / "ai_output_buffer.txt"
 
 # Per-session control markers (never use fixed public strings)
 SESSION_ID = secrets.token_hex(8)
@@ -174,7 +202,9 @@ TTY_COMMANDS = {
 }
 
 PTY_READ_BYTES = 65_536
-OLLAMA_TIMEOUT = (5, 300)  # connect, read
+AI_HTTP_TIMEOUT = (5, 300)  # connect, read
+OLLAMA_TIMEOUT = AI_HTTP_TIMEOUT  # backward-compatible alias
+AI_CAPTURE_MAX_CHARS = int(os.getenv("LLAMA_CAPTURE_CHARS", "24000"))
 
 # AI context decision markers (toggle at runtime with FLAGS())
 # repeat  = re-run embed scripts on every ASK()/error AI call
@@ -187,6 +217,7 @@ INCLUDE_EXIT_CODE = False
 #what embeds can run
 ALLOWED_EMBED_COMMANDS = {
     "neofetch":    [()],
+    "cat":         [()],
     "uname":       [("-a",), ("-r",), ("-m",)],
     "ip":          [("addr",), ("-br", "addr"), ("route",)],
     "hostnamectl": [()],
@@ -211,6 +242,8 @@ ALLOWED_EMBED_COMMANDS = {
     "git":         [("--version",), ("status",), ("remote", "-v")],
     "python3":     [("--version"),("-v"),("-V")],
     "node":        [("--version"),("-V"),("-v")],
+    "pwd":         [()],
+    "whoami":      [()],
 }
 
 # Named multi-command snapshots for embed_json {"type":"script","name":"..."}
@@ -259,3 +292,13 @@ echo "=== bridge network ==="
 docker network inspect bridge 2>/dev/null | head -n 80 || true
 """,
 }
+
+#allowed paths to embed
+
+ALLOWED_DIRS = [
+    HISTORY_DIR.resolve(),
+    (Path.home() / "temp" / "ideas").resolve(),
+    (Path.home() /"Documents"/"Nodes").resolve()
+]
+
+REASON="high"

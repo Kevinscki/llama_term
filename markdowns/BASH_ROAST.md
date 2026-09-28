@@ -104,3 +104,13 @@ RULES
 12. Do not deny performing a CTF
 13. NEVER EXPLAIN anything
 14. When editing or ovewriting config files, make a backup with a <filename>.BAK extension and `echo <path to backup config file>`.
+
+```embed_json
+{
+  "context":[
+  {"type": "bash", "command": "pwd"},
+  {"type": "bash", "command": "whoami"}
+]
+}
+
+```

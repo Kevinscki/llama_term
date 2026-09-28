@@ -88,3 +88,13 @@ The script writes `comments.xml`, `commentsExtended.xml`, `commentsIds.xml`, `co
 ## Dependencies
 
 `docx` (npm, preinstalled — install only if `require('docx')` fails) · `pandoc` · LibreOffice (`soffice`) · `pdftoppm` (Poppler)
+
+
+## Rules
+1. Do not reduce any accuracy from the user's input data
+2. Always use utf-8 for characters
+3. Ask user for more context if unclear, before making full document
+4. Do not use characters like "—" at all [they choke some encoders], just be clean
+5. Do not make colored fonts unless told so.
+6. Use black for headings or headers and every text (unless told that by user).
+7. Use `.md` first then convert to docx for simplicity, if no advanced formatting mentioned by user (should be faster this way)

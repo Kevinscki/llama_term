@@ -62,23 +62,24 @@ if [ ! -f ".env" ]; then
   if [ -f ".env.example" ]; then
     echo "Creating .env from .env.example..."
     cp .env.example .env
-    echo "A new .env file has been created. Please edit it and fill in any secrets (e.g., GEMINI_API)."
+    echo "A new .env file has been created. Please edit it and fill in any secrets (OPENAI_URL_API, ANTHROPIC_URL_API, GEMINI_API)."
   else
-    echo "No .env.example found – you will need to create a .env manually if you use Gemini." >&2
+    echo "No .env.example found – you will need to create a .env manually for API keys." >&2
   fi
 else
   echo ".env already exists – leaving unchanged."
 fi
 
 # -------------------------------------------------------------------
-# 5. Optional Ollama sanity check (only if you intend to use the local model)
+# 5. Optional backend sanity check
 # -------------------------------------------------------------------
-if grep -q "^API_TYPE=ollama_http" .env 2>/dev/null; then
-  if command -v ollama >/dev/null 2>&1; then
-    echo "Ollama binary detected in PATH."
-    # You could add a quick version check here if desired.
-  else
-    echo "Ollama not found in PATH. If you plan to use the Ollama backend, install it from https://ollama.ai/" >&2
+echo "Default API_TYPE is openai_http (OpenAI-compatible /v1/chat/completions)."
+if grep -qE "^API_TYPE=(openai_http|ollama_http)" .env 2>/dev/null; then
+  echo "Ensure OPENAI_URL_ENDPOINT points at your gateway (e.g. Omniroute)."
+  if grep -qiE "^OPENAI_API=(True|1|yes|on)" .env 2>/dev/null; then
+    if ! grep -qE "^OPENAI_URL_API=.+" .env 2>/dev/null; then
+      echo "OPENAI_API is enabled but OPENAI_URL_API looks empty in .env." >&2
+    fi
   fi
 fi
 
@@ -94,7 +95,7 @@ To start the interactive shell, run:
     source .venv/bin/activate   # activate the virtual environment (if not already active)
     python3 llama_shell.py
 
-If you configured a Gemini API key, ensure the .env file contains a valid GEMINI_API value.
+If you use a bearer/API key, set OPENAI_URL_API (and/or ANTHROPIC_URL_API / GEMINI_API) in .env.
 
 Enjoy!
 EOF

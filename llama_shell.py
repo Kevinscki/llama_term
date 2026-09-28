@@ -9,7 +9,7 @@ import sys
 import shlex
 import json
 import base64
-import threading
+import struct
 from datetime import datetime
 from rich.console import Console
 import termios
@@ -21,6 +21,11 @@ from ai_display import stream_response
 from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.document import Document
 from prompt_toolkit.completion import PathCompleter, Completion, Completer
+
+from google import genai
+from google.genai import types
+
+
 import signal
 from prompt_toolkit import PromptSession
 
@@ -132,47 +137,168 @@ def extract_bash_blocks(text: str) -> list[str]: #Get bash blocks
     return blocks
 
 
-#talk to ollama
-def ollama_http(messages, model=OLLAMA_MODEL, url=OLLAMA_URL):
+def _iter_sse_json(response):
+    """Yield JSON objects from an OpenAI/Anthropic-style SSE or NDJSON stream."""
+    for raw in response.iter_lines(decode_unicode=True):
+        if not raw:
+            continue
+        line = raw.strip()
+        if line.startswith(":"):
+            continue  # SSE comment / keepalive
+        if line.startswith("data:"):
+            data = line[5:].strip()
+            if not data or data == "[DONE]":
+                if data == "[DONE]":
+                    return
+                continue
+            try:
+                yield json.loads(data)
+            except json.JSONDecodeError:
+                continue
+        elif line.startswith("{"):
+            # Plain NDJSON fallback (some proxies)
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+
+def _openai_delta_text(chunk: dict) -> str:
+    """Extract assistant text from an OpenAI chat.completions stream chunk."""
+    choices = chunk.get("choices") or []
+    if not choices:
+        # Non-stream style body sometimes returned by misconfigured proxies
+        msg = chunk.get("message") or {}
+        if isinstance(msg, dict) and msg.get("content"):
+            return msg["content"]
+        return ""
+    choice = choices[0] or {}
+    delta = choice.get("delta") or {}
+    content = delta.get("content")
+    if content:
+        return content
+    # Non-streaming / final message shape nested in stream (rare)
+    message = choice.get("message") or {}
+    return message.get("content") or ""
+
+
+def openai_http(messages, model=OPENAI_MODEL, url=OPENAI_URL_ENDPOINT):
+    """OpenAI Chat Completions compatible streaming client (Omniroute, Ollama /v1, etc.)."""
     payload = {
         "model": model,
         "messages": messages,
         "stream": True,
-        "think": False,
-        "options": {"temperature": 0.2, "repeat_penalty": 1.18, "top_p": 0.9},
+        "temperature": 0.2,
+        "top_p": 0.9,
+        "reasoning_effort": REASON,
     }
+    headers = {"Content-Type": "application/json"}
+    if OPENAI_API:
+        if not OPENAI_URL_API:
+            raise RuntimeError(
+                "OPENAI_API=True but OPENAI_URL_API is empty. "
+                "Set the bearer token in .env (see .env.example)."
+            )
+        headers["Authorization"] = f"Bearer {OPENAI_URL_API}"
+
     try:
-        with requests.post(url, json=payload, stream=True, timeout=OLLAMA_TIMEOUT) as r:
+        with requests.post(url, json=payload, headers=headers, stream=True, timeout=AI_HTTP_TIMEOUT) as r:
             r.raise_for_status()
-            for line in r.iter_lines():
-                if not line:
-                    continue
-                try:
-                    chunk = json.loads(line.decode("utf-8"))
-                except (UnicodeDecodeError, json.JSONDecodeError):
-                    continue
-                tokens = chunk.get("message", {}).get("content")
+            for chunk in _iter_sse_json(r):
+                tokens = _openai_delta_text(chunk)
                 if tokens:
                     yield tokens
     except requests.RequestException as e:
-        raise RuntimeError(f"Ollama request failed: {e}") from e
+        raise RuntimeError(f"OpenAI-compatible request failed: {e}") from e
+
+
+def _split_system_messages(messages):
+    """Anthropic wants system as a top-level field, not a message role."""
+    system_parts = []
+    chat = []
+    for msg in messages:
+        role = (msg.get("role") or "user").lower()
+        content = msg.get("content", "")
+        if role == "system":
+            if content:
+                system_parts.append(content)
+            continue
+        if role not in ("user", "assistant"):
+            role = "user"
+        chat.append({"role": role, "content": content})
+    return "\n\n".join(system_parts) if system_parts else None, chat
+
+
+def _anthropic_delta_text(event: dict) -> str:
+    """Extract text from Anthropic Messages SSE event payloads."""
+    etype = event.get("type")
+    if etype == "content_block_delta":
+        delta = event.get("delta") or {}
+        if delta.get("type") == "text_delta":
+            return delta.get("text") or ""
+    # Some Anthropic-compatible proxies mirror OpenAI deltas
+    if "choices" in event:
+        return _openai_delta_text(event)
+    return ""
+
+
+def anthropic_http(messages, model=ANTHROPIC_MODEL, url=ANTHROPIC_URL_ENDPOINT):
+    """Anthropic Messages API compatible streaming client."""
+    system, chat_messages = _split_system_messages(messages)
+    if not chat_messages:
+        return
+
+    payload = {
+        "model": model,
+        "messages": chat_messages,
+        "max_tokens": ANTHROPIC_MAX_TOKENS,
+        "stream": True,
+        "temperature": 0.2,
+    }
+    if system:
+        payload["system"] = system
+
+    headers = {
+        "Content-Type": "application/json",
+        "anthropic-version": ANTHROPIC_VERSION,
+    }
+    if ANTHROPIC_API:
+        if not ANTHROPIC_URL_API:
+            raise RuntimeError(
+                "ANTHROPIC_API=True but ANTHROPIC_URL_API is empty. "
+                "Set the API key in .env (see .env.example)."
+            )
+        headers["x-api-key"] = ANTHROPIC_URL_API
+        # Some OpenAI→Anthropic bridges also accept Bearer
+        headers.setdefault("Authorization", f"Bearer {ANTHROPIC_URL_API}")
+
+    try:
+        with requests.post(url, json=payload, headers=headers, stream=True, timeout=AI_HTTP_TIMEOUT) as r:
+            r.raise_for_status()
+            for event in _iter_sse_json(r):
+                tokens = _anthropic_delta_text(event)
+                if tokens:
+                    yield tokens
+    except requests.RequestException as e:
+        raise RuntimeError(f"Anthropic-compatible request failed: {e}") from e
 
 
 _gemini_ready = False
 
+_gemini_client = None
+
 def _ensure_gemini():
-    global _gemini_ready
-    if _gemini_ready:
-        return
+    global _gemini_client
+    if _gemini_client is not None:
+        return _gemini_client
     if not GEMINI_API:
         raise RuntimeError(
             "GEMINI_API is not set. Put it in .env or the environment "
             "(see .env.example). Rotate any key that was previously hardcoded."
         )
-    import google.generativeai as genai
-    genai.configure(api_key=GEMINI_API)
-    _gemini_ready = True
-    return genai
+    _gemini_client = genai.Client(api_key=GEMINI_API)
+    return _gemini_client   
+    
 
 
 #gemini experimental convert.
@@ -199,28 +325,39 @@ def convert_to_gemini(messages):
 
 
 def gemini_stream(prompt):
-    genai = _ensure_gemini()
+    client = _ensure_gemini()
     system, contents = convert_to_gemini(prompt)
-    model = genai.GenerativeModel(GEMINI_MODEL, system_instruction=system)
 
     if not contents:
         return
 
-    history_for_chat = contents[:-1]
-    last_message = contents[-1]
+    normalized = [
+        types.Content(
+            role=msg["role"],
+            parts=[types.Part(text=p) if isinstance(p, str) else p for p in msg["parts"]],
+        )
+        for msg in contents
+    ]
 
-    chat = model.start_chat(history=history_for_chat)
-    response = chat.send_message(last_message["parts"][0], stream=True)
+    response = client.models.generate_content_stream(
+        model=GEMINI_MODEL,
+        contents=normalized,
+        config=types.GenerateContentConfig(
+            system_instruction=system,
+        ),
+    )
 
     for chunk in response:
         if chunk.text:
             yield chunk.text
-
 #Router
 def ai_response(prompt):
-    if API_TYPE.lower() == "ollama_http":
-        return ollama_http(prompt)
-    elif API_TYPE.lower() == "gemini":
+    kind = API_TYPE.lower()
+    if kind in ("openai_http", "ollama_http"):  # ollama_http kept as alias
+        return openai_http(prompt)
+    if kind == "anthropic_http":
+        return anthropic_http(prompt)
+    if kind == "gemini":
         return gemini_stream(prompt)
     raise RuntimeError(f"Unknown API_TYPE: {API_TYPE!r}")
 
@@ -281,7 +418,7 @@ def show_header():
         ("FLAGS()",  "Toggle repeat/embed/exitcode context markers"),
         ("BUMP()",   "Reset model context — clears hallucinations"),
         ("LOAD()",   "Warm up and load your AI model"),
-        ("TOOL()",   "List or switch active tool"),
+        ("TOOL()",   "List (numbered) or switch active tool"),
         ("BANNER()", "Redisplay this banner"),
         ("RESET()",  "Restart the shell session"),
         ("HELP",     "Show the full command reference"),
@@ -323,7 +460,7 @@ def show_help():
     entry("exit / quit",    "Close llama_term")
 
     section("AI Controls")
-    entry("ESC()",         "Instantly stop any waiting loop; shows the pending sentence")
+    entry("ESC()",         "Instantly stop a waiting loop; sentence goes to the AI")
     entry("ASK() …",        "Ask the model — generates bash from live host/tool context")
     entry("FLAGS()",        "Show context markers (repeat / embed / exitcode)")
     entry("FLAGS() …",      "FLAGS() repeat|embed|exitcode on|off  or  FLAGS() all on|off")
@@ -348,30 +485,34 @@ def show_help():
     entry("a",              "Auto-run non-risky suggestions for this session")
     entry("c",              "Copy the suggested script to the clipboard")
     entry("v",              "View the exact script before deciding")
-    entry("t",              "Run captured; attach STDOUT + STDERR to AI context")
+    entry("t",              "Run on a real PTY; attach output transcript to AI context")
     entry("1-9",            "With multiple blocks: run just that block")
     print(f"  {DIM}{STEAM}Risky lines always force an explicit y — 'a' can never bypass them.{RESET}")
 
     section("Real TTY Mode")
-    print(f"  {DIM}{STEAM}Editors, pagers and REPLs are wrapped in script(1) so they{RESET}")
-    print(f"  {DIM}{STEAM}get a fresh PTY *inside* the persistent shell — cd/env state{RESET}")
-    print(f"  {DIM}{STEAM}still persists across commands. LLAMA_REALTTY=auto|always|off.{RESET}")
+    print(f"  {DIM}{STEAM}AI scripts run on their own throwaway PTY (no state kept), so{RESET}")
+    print(f"  {DIM}{STEAM}colors, loading bars and TUIs render as usual; [t] tees the{RESET}")
+    print(f"  {DIM}{STEAM}transcript to a tmp buffer for the AI. Editors, pagers and REPLs{RESET}")
+    print(f"  {DIM}{STEAM}you type yourself are wrapped in script(1) inside the persistent{RESET}")
+    print(f"  {DIM}{STEAM}shell — LLAMA_REALTTY=auto|always|off.{RESET}")
 
     section("Logging")
     print(f"  {DIM}{STEAM}Approved AI scripts append to {LATTE}{LOG_FILE}{RESET}")
     print(f"  {DIM}{STEAM}Do not put secrets in included files sent to cloud providers.{RESET}")
     
     section("Tools")
-    entry("TOOL()",          "List available tools")
+    entry("TOOL()",          "List available tools (numbered)")
     entry("TOOL() NAME",     "Switch active tool (e.g. TOOL() GIT)")
+    entry("TOOL() :N",       "Switch to list position N (e.g. TOOL() :1)")
     entry("ADD_TOOL() NAME", "AI-draft a new tool, review in editor, save")
     print(f"  {DIM}{STEAM}Tools are markdown system prompts stored in {LATTE}{HISTORY_DIR}{RESET}{DIM}{STEAM}.{RESET}")
     print(f"  {DIM}{STEAM}Current tool: {CARAMEL}{CURRENT_TOOL_NAME}{RESET}")
 
     section("Setup")
-    entry("Ollama",         "https://ollama.ai/")
-    entry("Default model",  f"{OLLAMA_MODEL}  (ollama pull {OLLAMA_MODEL})")
-    entry("Secrets",        "Copy .env.example → .env (GEMINI_API, etc.)")
+    entry("OpenAI-compat",  "API_TYPE=openai_http  (Omniroute / Ollama /v1 / OpenAI)")
+    entry("Anthropic",      "API_TYPE=anthropic_http")
+    entry("Default model",  f"{OPENAI_MODEL}")
+    entry("Secrets",        "Copy .env.example → .env (OPENAI_URL_API, ANTHROPIC_URL_API, GEMINI_API)")
     print()
 
 import termios, tty, signal
@@ -388,32 +529,119 @@ def make_preexec(fd):
     return preexec
 
 
-def run_ai_script_pty(script_path: Path):
-    """Run approved AI script in a PTY with cleanup; guard non-TTY stdin."""
-    global current_dir
+def _set_pty_size(master_fd):
+    """Mirror the real terminal size onto the PTY so bars/TUIs render right."""
+    cols, rows = shutil.get_terminal_size((120, 36))
+    if cols <= 0 or rows <= 0:
+        cols, rows = 120, 36
+    try:
+        fcntl.ioctl(
+            master_fd, termios.TIOCSWINSZ,
+            struct.pack("HHHH", rows, cols, 0, 0),
+        )
+    except OSError:
+        pass
+
+
+def _write_all(fd, data: bytes):
+    view = memoryview(data)
+    while view:
+        try:
+            n = os.write(fd, view)
+        except OSError:
+            return
+        view = view[n:]
+
+
+_ANSI_RE = re.compile(
+    r"\x1b\[[0-9;?]*[ -/]*[@-~]"          # CSI sequences (colors, cursor…)
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?"  # OSC (window title, clipboard…)
+    r"|\x1b[@-Z\\-_]"                       # other single-char escapes
+)
+
+
+def _clean_capture(raw: bytes, limit: int) -> str:
+    """PTY transcript → plain text for the AI: strip escapes, collapse \\r frames."""
+    text = _ANSI_RE.sub("", raw.decode("utf-8", errors="replace"))
+    # PTY line discipline turns \n into \r\n — normalize FIRST or every line
+    # would end in \r and collapse to "". \r+ handles bar-frame + "\n"
+    # combos (\r\r\n); lone bare-\r redraw frames are collapsed per-line below
+    text = re.sub(r"\r+\n", "\n", text)
+    lines = []
+    for line in text.split("\n"):
+        if "\r" in line:
+            # bare-\r progress-bar redraws: keep only the final frame
+            line = line.rsplit("\r", 1)[-1]
+        lines.append(line.rstrip())
+    out = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip("\n")
+    if len(out) > limit:
+        out = out[:limit] + "\n…[truncated]"
+    return out
+
+def run_ai_script_pty(script_path: Path, capture: bool = False):
+    """Run an approved AI script on its own real PTY — no session persistence,
+    except $PWD and env are captured via an out-of-band fd and merged back
+    into the caller's global state.
+    Returns (returncode, transcript_or_None).
+    """
+    global current_dir, env
     master_fd, slave_fd = pty.openpty()
+    _set_pty_size(master_fd)
     result = None
     old_tty = None
+    old_winch = None
+    cap_buf = bytearray()
+    child_env = dict(env)
+    child_env.setdefault("TERM", "xterm-256color")
+
+    # out-of-band pipe for final $PWD + env, kept off the PTY byte stream
+    state_r, state_w = os.pipe()
+    os.set_inheritable(state_w, True)
+
+    # wrapper sources the real script (so cd/export stay visible to us),
+    # then reports state on fd `state_w`, then exits with the real rc
+    wrapper_path = script_path.with_suffix(script_path.suffix + ".wrap.sh")
+    wrapper_path.write_text(
+        f"source {shlex.quote(str(script_path))}\n"
+        f"__rc=$?\n"
+        f"{{ printf '%s\\0' \"$PWD\"; env -0; }} >&{state_w}\n"
+        f"exec {state_w}>&-\n"  # close it explicitly so EOF is prompt
+        f"exit $__rc\n"
+    )
+
     try:
         result = subprocess.Popen(
-            ["/bin/bash", str(script_path)],
+            ["/bin/bash", str(wrapper_path)],
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
+            pass_fds=(state_w,),
             close_fds=True,
             cwd=current_dir,
             preexec_fn=make_preexec(slave_fd),
-            env=env,
+            env=child_env,
         )
         os.close(slave_fd)
         slave_fd = -1
+        os.close(state_w)  # parent doesn't write; drop its copy so EOF works
+        state_w = -1
 
         interactive = sys.stdin.isatty() and sys.stdout.isatty()
         if interactive:
             old_tty = termios.tcgetattr(0)
             tty.setraw(0)
 
-        while True:
+        def _on_winch(signum, frame):
+            _set_pty_size(master_fd)
+
+        if interactive:
+            try:
+                old_winch = signal.signal(signal.SIGWINCH, _on_winch)
+            except (ValueError, OSError):
+                old_winch = None
+
+        stop = False
+        while not stop:
             try:
                 readers = [master_fd] + ([0] if interactive else [])
                 r, _, _ = select.select(readers, [], [], 0.1)
@@ -423,36 +651,28 @@ def run_ai_script_pty(script_path: Path):
                 try:
                     data = os.read(master_fd, PTY_READ_BYTES)
                 except OSError:
-                    break
-                if not data:
-                    break
-                lines = data.decode(errors="replace").split("\n")
-                clean_lines = []
-                for line in lines:
-                    if line.startswith(MARKER_AI_PWD):
-                        current_dir = line.split(MARKER_AI_PWD, 1)[1].rstrip("\r")
-                        try:
-                            os.chdir(current_dir)
-                        except OSError:
-                            pass
-                    elif line.startswith(MARKER_AI_END) or line.strip() == MARKER_AI_END:
-                        if result.poll() is None:
-                            result.terminate()
-                    else:
-                        clean_lines.append(line)
-                clean = "\n".join(clean_lines).encode()
-                if clean:
-                    os.write(1, clean)
+                    data = b""
+                if data:
+                    if capture:
+                        cap_buf.extend(data)
+                    _write_all(1, data)
+                else:
+                    stop = True
             if interactive and 0 in r:
                 try:
                     user_input = os.read(0, PTY_READ_BYTES)
                 except OSError:
-                    break
+                    user_input = b""
                 if user_input:
-                    os.write(master_fd, user_input)
-            if result.poll() is not None:
-                break
+                    _write_all(master_fd, user_input)
+            if result.poll() is not None and not r:
+                stop = True
     finally:
+        if old_winch is not None:
+            try:
+                signal.signal(signal.SIGWINCH, old_winch)
+            except (ValueError, OSError):
+                pass
         if old_tty is not None:
             try:
                 termios.tcsetattr(0, termios.TCSADRAIN, old_tty)
@@ -467,6 +687,11 @@ def run_ai_script_pty(script_path: Path):
                 os.close(slave_fd)
             except OSError:
                 pass
+        if state_w >= 0:
+            try:
+                os.close(state_w)
+            except OSError:
+                pass
         if result is not None:
             try:
                 result.wait(timeout=5)
@@ -476,8 +701,46 @@ def run_ai_script_pty(script_path: Path):
                 except Exception:
                     pass
                 result.wait()
-    return result.returncode if result is not None else -1
+        wrapper_path.unlink(missing_ok=True)
 
+    # drain state pipe now that the child (and its fd copy) is gone
+    state_data = b""
+    try:
+        while True:
+            chunk = os.read(state_r, 65536)
+            if not chunk:
+                break
+            state_data += chunk
+    except OSError:
+        pass
+    finally:
+        try:
+            os.close(state_r)
+        except OSError:
+            pass
+
+    if state_data:
+        parts = state_data.split(b"\0")
+        if parts and parts[0]:
+            new_dir = parts[0].decode(errors="replace").strip()
+            if new_dir and os.path.isdir(new_dir) and new_dir != current_dir:
+                current_dir = new_dir
+                try:
+                    bashcmd.stdin.write(f"cd {shlex.quote(current_dir)}\n")
+                    bashcmd.stdin.flush()
+                except (BrokenPipeError, AttributeError):
+                    pass
+        # remaining null-separated KEY=VALUE pairs are the env
+        new_env = {}
+        for pair in parts[1:]:
+            if b"=" in pair:
+                k, _, v = pair.partition(b"=")
+                new_env[k.decode(errors="replace")] = v.decode(errors="replace")
+        if new_env:
+            env.update(new_env)
+
+    rc = result.returncode if result is not None else -1
+    return rc, (_clean_capture(bytes(cap_buf), AI_CAPTURE_MAX_CHARS) if capture else None)
 
 LIVE_CONTEXT_MARKER = "# === LIVE HOST / TOOL CONTEXT"
 
@@ -504,67 +767,15 @@ def copy_to_clipboard(text: str) -> str:
 
 
 def _write_temp_script(blocks: list[str]) -> None:
-    """Write selected bash blocks + session trailers to TEMP_SCRIPT."""
+    """Write selected bash blocks to TEMP_SCRIPT.
+
+    No session trailers: AI scripts run on a throwaway PTY (state is not
+    persisted), so the output stream stays pure for bars/TUIs and the
+    exit code comes straight from the process.
+    """
     with open(TEMP_SCRIPT, "w") as tmp:
         tmp.write("\n".join(blocks))
-        tmp.write(f'\necho -e "\\n{MARKER_AI_PWD}$(pwd)"')
-        tmp.write(f'\necho -e "\\n{MARKER_AI_END}"\n')
-
-
-def run_ai_script_captured(script_path: Path, max_capture: int = 24_000):
-    """Run an approved script capturing stdout/stderr separately.
-
-    Streams stdout live to the screen while a background thread drains
-    stderr (no pipe deadlock). Returns (rc, stdout_text, stderr_text).
-    Control-marker lines are filtered and still drive cwd tracking.
-    """
-    global current_dir
-    proc = subprocess.Popen(
-        ["/bin/bash", str(script_path)],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        errors="replace",
-        cwd=current_dir,
-        env=env,
-    )
-    err_buf: list[str] = []
-    t = threading.Thread(
-        target=lambda: err_buf.extend(iter(proc.stderr.readline, "")),
-        daemon=True,
-    )
-    t.start()
-
-    out_parts: list[str] = []
-    for line in proc.stdout:
-        raw = line.rstrip("\n")
-        if raw.startswith(MARKER_AI_PWD):
-            new_dir = raw[len(MARKER_AI_PWD):].strip()
-            if new_dir:
-                current_dir = new_dir
-                try:
-                    os.chdir(current_dir)
-                except OSError:
-                    pass
-            continue
-        if raw.startswith(MARKER_AI_END) or raw.strip() == MARKER_AI_END:
-            continue
-        sys.stdout.write(line)
-        sys.stdout.flush()
-        out_parts.append(line)
-
-    rc = proc.wait()
-    t.join(timeout=2)
-
-    def _cap(parts: list[str]) -> str:
-        s = "".join(parts).rstrip("\n")
-        if len(s) > max_capture:
-            s = s[:max_capture] + "\n…[truncated]"
-        return s
-
-    return rc, _cap(out_parts), _cap(err_buf)
-
+        tmp.write("\n")
 
 
 #AI invoke — used on command failure and ASK()
@@ -751,10 +962,10 @@ def invoke_ai(user_text: str, *, refresh: bool | None = None):
             print(f"  {CREAM}[{i}]{RESET} {DIM}{STEAM}{first[:72]}{RESET}")
 
     def _menu_hint() -> str:
-        opts = "[y] run  [n] no"
+        opts = "[y] yes  [n] no"
         if not force_confirm:
-            opts += "  [a] always (session, non-risky)"
-        opts += "  [c] copy  [v] view  [t] run+capture → context"
+            opts += "  [a] always"
+        opts += "  [c] copy(no run)  [v] view(no run)  [t] run+capture → AI"
         if n_blocks > 1:
             opts += f"  [1-{n_blocks}] one block"
         return opts
@@ -768,7 +979,7 @@ def invoke_ai(user_text: str, *, refresh: bool | None = None):
             try:
                 tag = f"{CINNAMON}HIGH-RISK {RESET}" if force_confirm else ""
                 choice = input(
-                    f"  {tag}{CREAM}Action?{RESET} {DIM}{_menu_hint()}{RESET}  › "
+                    f"  {tag}{CREAM}Run it?{RESET} {DIM}{_menu_hint()}{RESET}  › "
                 ).strip().lower()
                 print()
             except KeyboardInterrupt:
@@ -815,21 +1026,22 @@ def invoke_ai(user_text: str, *, refresh: bool | None = None):
 
     if execute_now:
         try:
+            rc, transcript = run_ai_script_pty(TEMP_SCRIPT, capture=capture_run)
             if capture_run:
-                rc, out_txt, err_txt = run_ai_script_captured(TEMP_SCRIPT)
                 stamp = datetime.now().isoformat(timespec="seconds")
+                # [t] back-and-forth buffer: transcript is written to a tmp
+                # file and read back from there into the AI context
+                attached = transcript or ""
+                try:
+                    CAPTURE_FILE.write_text(attached, encoding="utf-8")
+                    attached = CAPTURE_FILE.read_text(encoding="utf-8")
+                except OSError:
+                    pass  # fall back to in-memory copy
                 history.append({"role": "user",
-                                "content": f"[STDOUT {stamp}]\n{out_txt or '(empty)'}"})
-                history.append({"role": "user",
-                                "content": f"[STDERR {stamp}]\n{err_txt or '(empty)'}"})
+                                "content": f"[OUTPUT {stamp}]\n{attached or '(empty)'}"})
                 _trim_history()
-                if err_txt:
-                    for ln in err_txt.splitlines():
-                        sys.stdout.write(f"{RED}! {ln}{RESET}\n")
-                    sys.stdout.flush()
-                print(f"{DIM}{STEAM}[+] STDOUT + STDERR attached as separate AI context messages.{RESET}")
-            else:
-                rc = run_ai_script_pty(TEMP_SCRIPT)
+                print(f"{DIM}{STEAM}Transcript buffered to {CAPTURE_FILE} "
+                      f"({len(attached)} chars) and added to AI knowledge.{RESET}")
             try:
                 with LOG_FILE.open("a") as f:
                     f.write(f"\n# AI script {datetime.now().isoformat()} rc={rc}\n")
@@ -961,7 +1173,6 @@ def _is_escape(text: str) -> bool:
 
 def _print_do_sentence(sentence: str) -> None:
     """Show the pending 'do sentence' so nothing typed is lost."""
-    print(f"{CINNAMON}⏹  Escaped.{RESET} {DIM}{STEAM}Pending sentence (not run):{RESET}")
     for ln in sentence.splitlines() or [""]:
         sys.stdout.write(f"  {STEAM}{DIM}| {ln}{RESET}\n")
     sys.stdout.flush()
@@ -1101,14 +1312,19 @@ def lord_bash(cmd_line, file_contents=None, from_includes=False): #The bash runn
             if "unexpected" in stderr and any(t in stderr for t in ("end of file", "EOF", "token")):
                 nxt = input(f"{DIM}> {RESET}")
                 if _is_escape(nxt):
-                    _print_do_sentence(cmd_line)
+                    #sentence was already proven unrunnable (bash -n failed),
+                    #so hand it straight to the AI instead of feeding bash
+                    #a fatal parse error that loses the exit-code trailer
+                    print(f"{CINNAMON}⏹  Escaped.{RESET} {DIM}{STEAM}Sentence handed to the AI…{RESET}")
+                    handle_error(cmd_line, 2)
                     return True
                 cmd_line += "\n" + nxt
                 cont = True
             if cmd_line.endswith("\\") and (len(cmd_line) - len(cmd_line.rstrip("\\"))) % 2 == 1:
                 nxt = input(f"{DIM}> {RESET}")
                 if _is_escape(nxt):
-                    _print_do_sentence(cmd_line)
+                    print(f"{CINNAMON}⏹  Escaped.{RESET} {DIM}{STEAM}Sentence handed to the AI…{RESET}")
+                    handle_error(cmd_line, 2)
                     return True
                 cmd_line += nxt
                 cont = True
@@ -1258,10 +1474,13 @@ def include_file(files):
         files = [files]
 
     provider = API_TYPE.lower()
-    if provider == "gemini":
+    if provider in ("gemini", "anthropic_http") or (
+        provider in ("openai_http", "ollama_http") and OPENAI_API and OPENAI_URL_API
+        and "127.0.0.1" not in OPENAI_URL_ENDPOINT and "localhost" not in OPENAI_URL_ENDPOINT
+    ):
         print(
-            f"{CINNAMON}[!] Active AI provider: Gemini (cloud). "
-            f"Included file text may leave this machine.{RESET}"
+            f"{CINNAMON}[!] Active AI provider: {provider} (may leave this machine). "
+            f"Included file text may be sent off-host.{RESET}"
         )
     else:
         print(f"{DIM}{STEAM}Active AI provider: {provider}{RESET}")
@@ -1313,36 +1532,30 @@ def include_file(files):
             sys.stderr.flush()
         # FIX.md: invoke AI on non-zero exit, not merely stderr noise
         if result.returncode != 0:
-            if provider == "gemini":
-                print(
-                    f"{CINNAMON}[!] About to send included file content + failed command "
-                    f"to Gemini.{RESET}"
-                )
-                try:
-                    go = input(f"  {CREAM}Continue? [y/N] › {RESET}").lower()
-                except KeyboardInterrupt:
-                    continue
-                if go != "y":
-                    print(f"{STEAM}{DIM}AI call skipped.{RESET}")
-                    continue
             handle_error(f"{combined}\n\n{cmd}", result.returncode)
 
+def _tool_names() -> list[str]:
+    return sorted(p.stem for p in HISTORY_DIR.glob("*.md") if p.stem != "BASH_LEGACY")
+
+
 def list_tools():
-    tools = sorted(p.stem for p in HISTORY_DIR.glob("*.md") if p.stem != "BASH_LEGACY")
+    tools = _tool_names()
     if not tools:
         print(f"{STEAM}{DIM}No tools found.{RESET}")
         return
     print(f"\n{LATTE}Available tools:{RESET}")
-    for t in tools:
+    for i, t in enumerate(tools, 1):
         marker = f" {CARAMEL}(active){RESET}" if t.upper() == CURRENT_TOOL_NAME else ""
-        print(f"  {CREAM}{t}{RESET}{marker}")
-    print()
+        num = f"{DIM}{STEAM}{i:>2}.{RESET}"
+        print(f"  {num} {CREAM}{t}{RESET}{marker}")
+    print(f"\n  {DIM}{STEAM}Switch by number: TOOL() :N (e.g. TOOL() :1){RESET}\n")
 
 HELP = {
     "TOOL": (
-        f"  {CREAM}TOOL(){RESET}                 list available tools\n"
+        f"  {CREAM}TOOL(){RESET}                 list available tools (numbered)\n"
         f"  {CREAM}TOOL() LIST{RESET}            list available tools\n"
         f"  {CREAM}TOOL() NAME{RESET}            switch to tool NAME (e.g. TOOL() GIT)\n"
+        f"  {CREAM}TOOL() :N{RESET}              switch to list position N (e.g. TOOL() :1)\n"
     ),
     "ADD_TOOL": (
         f"  {CREAM}ADD_TOOL() NAME{RESET}                switch on a blank/default tool draft\n"
@@ -1359,7 +1572,15 @@ def print_help(name: str):
     print(f"\n{LATTE}Usage — {name.upper()}(){RESET}")
     print(text)
  
-#Switching tool 
+#Switching tool
+def _tool_by_index(n: int, tools: list[str]) -> bool:
+    if not 1 <= n <= len(tools):
+        print(f"{RED}[ERROR] No tool #{n} — valid range is 1..{len(tools)}.{RESET}")
+        return False
+    swap_tool(tools[n - 1])
+    return True
+
+
 def handle_tool(args: list[str]):
     if not args:
         list_tools()
@@ -1368,6 +1589,35 @@ def handle_tool(args: list[str]):
     if sub == "LIST" or sub =="LS":
         list_tools()
         return
+    arg = args[0]
+
+    # ":N" always means list position N
+    m = re.fullmatch(r":(\d+)", arg)
+    if m:
+        tools = _tool_names()
+        if not tools:
+            print(f"{STEAM}{DIM}No tools found.{RESET}")
+            return
+        _tool_by_index(int(m.group(1)), tools)
+        return
+
+    # bare "N": prefer a real tool named N, else fall back to list position
+    m = re.fullmatch(r"(\d+)", arg)
+    if m:
+        if (HISTORY_DIR / f"{sub}.md").exists():
+            print(
+                f"{CARAMEL}[!] '{arg}' matches an actual tool name — using tool '{sub}'.{RESET} "
+                f"{DIM}{STEAM}(use TOOL() :{arg} to select by list position){RESET}"
+            )
+            swap_tool(sub)
+            return
+        tools = _tool_names()
+        if not tools:
+            print(f"{STEAM}{DIM}No tools found.{RESET}")
+            return
+        _tool_by_index(int(m.group(1)), tools)
+        return
+
     if not TOOL_NAME_RE.match(args[0]):
         print(f"{RED}[ERROR] Invalid tool name.{RESET}")
         print_help("TOOL")
@@ -1392,10 +1642,7 @@ def embed_time(item: dict) -> str:
 
 
 
-ALLOWED_DIRS = [
-    HISTORY_DIR.resolve(),
-    (Path.home() / "temp" / "ideas").resolve(),
-]
+
 
 def _safe_resolve(full_path: str) -> Path | None:
     candidate = Path(full_path).expanduser().resolve()
@@ -1660,17 +1907,17 @@ def _draft_default_tool_md(name: str, description: str) -> str:
     )
 
 
-def _ask_ollama_for_tool(name: str, description: str) -> str:
+def _ask_model_for_tool(name: str, description: str) -> str:
     messages = [
         {"role": "system", "content": TOOL_META_PROMPT},
         {"role": "user", "content": f"Tool name: {name}\nDescription: {description or '(none given, infer from name)'}"},
     ]
     chunks = []
     try:
-        for token in ollama_http(messages):
+        for token in ai_response(messages):
             chunks.append(token)
     except Exception as e:
-        print(f"{RED}[ERROR] Ollama call failed: {e}{RESET}")
+        print(f"{RED}[ERROR] Model call failed: {e}{RESET}")
         return ""
     draft = "".join(chunks).strip()
     if not draft.rstrip().endswith("EOTOOL"):
@@ -1712,7 +1959,7 @@ def handle_add_tool(args: list[str]):
     temp_path.write_text(_draft_default_tool_md(name, description))
 
     print(f"{LATTE}{DIM}Asking model to draft tool prompt…{RESET}")
-    ai_draft = _ask_ollama_for_tool(name, description)
+    ai_draft = _ask_model_for_tool(name, description)
     if ai_draft:
         ai_path.write_text(ai_draft)
         print(f"{CARAMEL}AI draft ready.{RESET}\n")
@@ -1759,6 +2006,10 @@ def main():
     print(f"{DIM}{STEAM}Provider: {API_TYPE}  ·  runtime: {RUNTIME_DIR}{RESET}")
     if API_TYPE.lower() == "gemini" and not GEMINI_API:
         print(f"{CINNAMON}[!] GEMINI_API unset — set it in .env before using Gemini.{RESET}")
+    elif API_TYPE.lower() in ("openai_http", "ollama_http") and OPENAI_API and not OPENAI_URL_API:
+        print(f"{CINNAMON}[!] OPENAI_API=True but OPENAI_URL_API unset — set it in .env.{RESET}")
+    elif API_TYPE.lower() == "anthropic_http" and ANTHROPIC_API and not ANTHROPIC_URL_API:
+        print(f"{CINNAMON}[!] ANTHROPIC_API=True but ANTHROPIC_URL_API unset — set it in .env.{RESET}")
 
     # Apply default tool prompt + live embeds
     try:
