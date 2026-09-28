@@ -1,5 +1,5 @@
 # llama_term
-
+![Screenshot](screenshot.png)
 AI-assisted interactive shell for UNIX-like systems. Commands run in a persistent
 bash session; on failure (or via `ASK()`), an OpenAI-compatible model — or optional
 Anthropic / Gemini — proposes a fix. You confirm before any model-generated script runs.
@@ -78,3 +78,7 @@ persist. Set `LLAMA_REALTTY=auto|always|off` (default `auto`).
   relayed line-by-line, so exotic full-screen redraws can look slightly off.
 - AI suggestions can be wrong — always review before `y`.
 - See `FIX.md` for the repair backlog and remaining P2 work.
+
+## Screenshot
+
+![Screenshot](screenshot.png)
